@@ -33,6 +33,36 @@ impl Term {
     fn apply(applicand: Term, argument: Term) -> Term {
         Term::Application { applicand: Box::new(applicand), argument: Box::new(argument) }
     }
+
+    fn rename_bound(&mut self, from: &Name, to: &Name) {
+        match *self {
+            Term::Variable { ref mut name } => {
+                if *name == *from {
+                    *name = to.clone();
+                }
+            }
+            Term::Application { ref mut applicand, ref mut argument } => {
+                applicand.rename_bound(from, to);
+                argument.rename_bound(from, to);
+            }
+            Term::Lambda { ref bound_variable, ref mut body } => {
+                if *bound_variable != *from {
+                    body.rename_bound(from, to);
+                }
+            }
+        }
+    }
+
+    fn alpha_rename(&mut self) {
+        match *self {
+            Term::Lambda { ref mut bound_variable, ref mut body } => {
+                let old = bound_variable.clone();
+                bound_variable.push_str("'");
+                body.rename_bound(&old, &*bound_variable);
+            }
+            _ => {}
+        }
+    }
 }
 
 use std::fmt;
@@ -51,5 +81,25 @@ impl fmt::Display for Term {
 }
 
 fn main() {
-    println!("{}", Term::apply(Term::lambda("x", Term::variable("x")), Term::variable("y")));
+    let mut term = Term::apply(
+        Term::lambda(
+            "x",
+            Term::apply(
+                Term::variable("x"),
+                Term::lambda(
+                    "x",
+                    Term::apply(
+                        Term::variable("x"),
+                        Term::variable("x")
+                    )
+                )
+            )
+        ),
+        Term::variable("y")
+    );
+    println!("{}", term);
+    if let Term::Application { ref mut applicand, .. } = term {
+        applicand.alpha_rename();
+    }
+    println!("{}", term);
 }
