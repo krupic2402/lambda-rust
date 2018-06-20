@@ -1,0 +1,6 @@
+[package]
+name = "lambda-rust"
+version = "0.1.0"
+authors = ["Kristijan Rupić <krupic.2.0@gmail.com>"]
+
+[dependencies]
