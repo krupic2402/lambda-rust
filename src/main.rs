@@ -59,6 +59,32 @@ enum Term {
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 enum Strategy { NormalOrder, ApplicativeOrder }
 
+#[derive(Debug, Clone)]
+enum EvalResult {
+    NormalForm(Term),
+    PossiblyReducible(Term)
+}
+
+impl EvalResult {
+    fn unwrap(self) -> Term {
+        use EvalResult::*;
+
+        match self {
+            NormalForm(t) => t,
+            PossiblyReducible(t)  => t
+        }
+    }
+
+    fn map<F: FnOnce(Term) -> Term>(self, f: F) -> EvalResult {
+        use EvalResult::*;
+
+        match self {
+            NormalForm(t) => NormalForm(f(t)),
+            PossiblyReducible(t)  => PossiblyReducible(f(t))
+        }
+    }
+}
+
 impl Term {
     fn variable<T: Into<Name>>(name: T) -> Term {
         Term::Variable { name: name.into() }
@@ -134,20 +160,31 @@ impl Term {
         }
     }
 
-    fn beta_reduce(self, strategy: Strategy) -> Term {
+    fn reduce(self, strategy: Strategy) -> EvalResult {
+        use EvalResult::*;
+
         match strategy {
             Strategy::NormalOrder => {
                 match self {
-                    v @ Term::Variable { .. } => return v,
-                    Term::Lambda { bound_variable, body } => return Term::lambda(bound_variable, body.beta_reduce(strategy)),
+                    v @ Term::Variable { .. } =>
+                        return NormalForm(v),
+                    Term::Lambda { bound_variable, body } =>
+                        return body.reduce(strategy)
+                                   .map(|t| Term::lambda(bound_variable, t)),
                     Term::Application { applicand, argument } => {
                         let applicand = *applicand;
                         let argument = *argument;
                         if let Term::Lambda { bound_variable, body } = applicand {
-                            return body.substitute(&bound_variable, argument);
+                            return PossiblyReducible(body.substitute(&bound_variable, argument));
                         } else {
-                            // TODO: recurse into argument if there's no redex in applicand 
-                            return Term::apply(applicand.beta_reduce(strategy), argument);
+                            let head = applicand.reduce(strategy);
+
+                            match head {
+                                PossiblyReducible(_) =>
+                                    return head.map(|t| Term::apply(t, argument)),
+                                NormalForm(head) =>
+                                    return argument.reduce(strategy).map(|t| Term::apply(head, t))
+                            }
                         }
                     }
                 } 
@@ -198,5 +235,5 @@ fn main() {
     }
     println!("{}", term);
 
-    println!("{}", term.beta_reduce(Strategy::NormalOrder).beta_reduce(Strategy::NormalOrder));
+    println!("{:?}", term.reduce(Strategy::NormalOrder).unwrap().reduce(Strategy::NormalOrder));
 }
