@@ -100,18 +100,18 @@ impl Term {
             Term::Variable { name } => {
                 if name.depth == depth {
                     with.rebind_free(deepen_by, 0);
-                    return with;
+                    with
                 } else {
-                    return Term::variable(name);
+                    Term::variable(name)
                 }
             }
             Term::Application { applicand, argument } => {
                 let applicand = applicand.substitute(depth, deepen_by, with.clone());
                 let argument = argument.substitute(depth, deepen_by, with);
-                return Term::apply(applicand, argument);
+                Term::apply(applicand, argument)
             }
             Term::Lambda { body } => {
-                return Term::lambda(body.substitute(depth + 1, deepen_by + 1, with));
+                Term::lambda(body.substitute(depth + 1, deepen_by + 1, with))
             }
         }
     }
@@ -123,9 +123,9 @@ impl Term {
             Strategy::NormalOrder => {
                 match self {
                     v @ Term::Variable { .. } =>
-                        return NormalForm(v),
+                        NormalForm(v),
                     Term::Lambda { body } =>
-                        return body.reduce(strategy).map(Term::lambda),
+                        body.reduce(strategy).map(Term::lambda),
                     Term::Application { applicand, argument } => {
                         let applicand = *applicand;
                         let argument = *argument;
@@ -151,22 +151,22 @@ impl Term {
     fn fmt(&self, f: &mut fmt::Formatter, depth: u32, symbols: &mut Vec<String>) -> fmt::Result {
         use self::Term::*;
         
-        match self {
-            &Variable { ref name } => {
+        match *self {
+            Variable { ref name } => {
                 if name.depth <= depth {
                     return write!(f, "{}", symbols[(depth - name.depth) as usize]);
                 } else {
                     return write!(f, "{}", name);
                 }
             }
-            &Application { ref applicand, ref argument } => {
+            Application { ref applicand, ref argument } => {
                 write!(f, "(")?;
                 applicand.fmt(f, depth, symbols)?;
                 write!(f, " ")?;
                 argument.fmt(f, depth, symbols)?;
                 return write!(f, ")");
             }
-            &Lambda { ref body } => {
+            Lambda { ref body } => {
                 let name = format!("x{}", depth);
                 write!(f, "(λ{}.", name)?;
                 assert_eq!(symbols.len(), depth as usize);
