@@ -1,5 +1,6 @@
 
 use std::fmt;
+use std::collections::HashMap;
 
 const LAMBDA: &'static str = "λ";
 const ALPHA: &'static str = "α";
@@ -155,18 +156,41 @@ impl Term {
             _ => unimplemented!()
         }
     }
+
+    fn fmt(&self, f: &mut fmt::Formatter, depth: u32, symbols: &mut HashMap<u32, String>) -> fmt::Result {
+        use Term::*;
+        
+        match self {
+            &Variable { ref name } => {
+                if name.depth <= depth {
+                    return write!(f, "{}", symbols.get(&(depth - name.depth)).unwrap());
+                } else {
+                    return write!(f, "{}", name);
+                }
+            }
+            &Application { ref applicand, ref argument } => {
+                write!(f, "(")?;
+                applicand.fmt(f, depth, symbols)?;
+                write!(f, " ")?;
+                argument.fmt(f, depth, symbols)?;
+                return write!(f, ")");
+            }
+            &Lambda { ref body } => {
+                let name = format!("x{}", depth);
+                write!(f, "({}{}.", LAMBDA, name)?;
+                symbols.insert(depth, name);
+                
+                body.fmt(f, depth + 1, symbols)?;
+                return write!(f, ")");
+            }
+        }
+    }
 }
 
 impl fmt::Display for Term {
     fn fmt(&self, f: &mut fmt::Formatter) ->  fmt::Result {
-        match self {
-            &Term::Variable { ref name } =>
-                write!(f, "{}", name),
-            &Term::Application { ref applicand, ref argument } =>
-                write!(f, "({} {})", applicand, argument),
-            &Term::Lambda { ref body } =>
-                write!(f, "({}{}.{})", LAMBDA, "x", body),
-        }
+        let mut symbols = HashMap::new();
+        self.fmt(f, 0, &mut symbols)
     }
 }
 
