@@ -1,6 +1,5 @@
 
 use std::fmt;
-use std::convert;
 
 const LAMBDA: &'static str = "λ";
 const ALPHA: &'static str = "α";
@@ -11,40 +10,28 @@ const ETA: &'static str = "η";
 
 #[derive(Debug, PartialEq, Clone)]
 struct Name {
-    name: String,
-    id: u32
+    depth: u32
 }
 
-static mut ID_COUNTER: u32 = 0;
-
 impl Name {
-    fn fresh(&self) -> Name {
-        unsafe {
-            ID_COUNTER += 1;
-            Name { id: ID_COUNTER, name: self.name.clone() }
-        }
+    fn new(depth: u32) -> Name {
+        Name { depth }
+    }
+
+    fn rebind(&mut self, deepen_by: u32) {
+        self.depth += deepen_by;
     }
 }
 
 impl fmt::Display for Name {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}{}", self.name, self.id)
-    }
-}
-
-impl<'a> convert::From<&'a str> for Name {
-    fn from(name: &str) -> Name {
-        unsafe {
-            ID_COUNTER += 1;
-            Name { name: name.into(), id: ID_COUNTER }
-        }
+        write!(f, "↑{}", self.depth)
     }
 }
 
 #[derive(Debug, Clone)]
 enum Term {
     Lambda {
-        bound_variable: Name,
         body: Box<Term>
     },
     Application {
@@ -90,72 +77,49 @@ impl Term {
         Term::Variable { name: name.into() }
     }
 
-    fn lambda<T: Into<Name>>(variable: T, body: Term) -> Term {
-        Term::Lambda { bound_variable: variable.into(), body: Box::new(body) }
+    fn lambda(body: Term) -> Term {
+        Term::Lambda { body: Box::new(body) }
     }
 
     fn apply(applicand: Term, argument: Term) -> Term {
         Term::Application { applicand: Box::new(applicand), argument: Box::new(argument) }
     }
 
-    fn rename_bound(&mut self, from: &Name, to: &Name) {
+    fn rebind_free(&mut self, deepen_by: u32, depth: u32) {
         match *self {
             Term::Variable { ref mut name } => {
-                if *name == *from {
-                    *name = to.clone();
+                if name.depth > depth {
+                    name.rebind(deepen_by);
                 }
             }
             Term::Application { ref mut applicand, ref mut argument } => {
-                applicand.rename_bound(from, to);
-                argument.rename_bound(from, to);
+                applicand.rebind_free(deepen_by, depth);
+                argument.rebind_free(deepen_by, depth);
             }
-            Term::Lambda { ref bound_variable, ref mut body } => {
-                if *bound_variable != *from {
-                    body.rename_bound(from, to);
-                }
+            Term::Lambda { ref mut body } => {
+                body.rebind_free(deepen_by + 1, depth + 1);
             }
         }
     }
 
-    fn alpha_rename(&mut self) {
-        match *self {
-            Term::Lambda { ref mut bound_variable, ref mut body } => {
-                let old = bound_variable.clone();
-                *bound_variable = bound_variable.fresh();
-                body.rename_bound(&old, &bound_variable);
-            }
-            _ => {}
-        }
-    }
-
-    fn substitute(self, what: &Name, with: Term) -> Term {
-        println!("substitute {} with {} in {}", what, with, self);
+    fn substitute(self, depth: u32, deepen_by: u32, mut with: Term) -> Term {
+        println!("substitute {} with {} in {}", depth, with, self);
         match self {
             Term::Variable { name } => {
-                if name == *what {
+                if name.depth == depth {
+                    with.rebind_free(deepen_by, 0);
                     return with;
                 } else {
                     return Term::variable(name);
                 }
             }
             Term::Application { applicand, argument } => {
-                let applicand = applicand.substitute(what, with.clone());
-                let argument = argument.substitute(what, with);
+                let applicand = applicand.substitute(depth, deepen_by, with.clone());
+                let argument = argument.substitute(depth, deepen_by, with);
                 return Term::apply(applicand, argument);
             }
-            Term::Lambda { bound_variable, body } => {
-                if bound_variable == *what {
-                    return Term::lambda(bound_variable, *body);
-                } else {
-                    let mut lambda = Term::lambda(bound_variable, *body);
-                    lambda.alpha_rename();
-
-                    if let Term::Lambda { bound_variable, body } = lambda {
-                        return Term::lambda(bound_variable, body.substitute(what, with));
-                    } else {
-                        unreachable!();
-                    }
-                }
+            Term::Lambda { body } => {
+                return Term::lambda(body.substitute(depth + 1, deepen_by + 1, with));
             }
         }
     }
@@ -168,14 +132,13 @@ impl Term {
                 match self {
                     v @ Term::Variable { .. } =>
                         return NormalForm(v),
-                    Term::Lambda { bound_variable, body } =>
-                        return body.reduce(strategy)
-                                   .map(|t| Term::lambda(bound_variable, t)),
+                    Term::Lambda { body } =>
+                        return body.reduce(strategy).map(Term::lambda),
                     Term::Application { applicand, argument } => {
                         let applicand = *applicand;
                         let argument = *argument;
-                        if let Term::Lambda { bound_variable, body } = applicand {
-                            return PossiblyReducible(body.substitute(&bound_variable, argument));
+                        if let Term::Lambda { body } = applicand {
+                            return PossiblyReducible(body.substitute(1, 0, argument));
                         } else {
                             let head = applicand.reduce(strategy);
 
@@ -201,39 +164,30 @@ impl fmt::Display for Term {
                 write!(f, "{}", name),
             &Term::Application { ref applicand, ref argument } =>
                 write!(f, "({} {})", applicand, argument),
-            &Term::Lambda { ref bound_variable, ref body } =>
-                write!(f, "({}{}.{})", LAMBDA, bound_variable, body),
+            &Term::Lambda { ref body } =>
+                write!(f, "({}{}.{})", LAMBDA, "x", body),
         }
     }
 }
 
 fn main() {
-    let mut term = {
-        let x: Name = "x".into();
-        let y: Name = "y".into();
+    let term = {
         Term::apply(
             Term::lambda(
-                x.clone(),
                 Term::apply(
-                    Term::variable(x.clone()),
+                    Term::variable(Name::new(1)),
                     Term::lambda(
-                        x.clone(),
                         Term::apply(
-                            Term::variable(x.clone()),
-                            Term::variable(x.clone())
+                            Term::variable(Name::new(1)),
+                            Term::variable(Name::new(2))
                         )
                     )
                 )
             ),
-            Term::variable(y)
+            Term::variable(Name::new(99))
         )
     };
     println!("{}", term);
-    
-    if let Term::Application { ref mut applicand, .. } = term {
-        applicand.alpha_rename();
-    }
-    println!("{}", term);
 
-    println!("{:?}", term.reduce(Strategy::NormalOrder).unwrap().reduce(Strategy::NormalOrder));
+    println!("{}", term.reduce(Strategy::NormalOrder).unwrap().reduce(Strategy::NormalOrder).unwrap());
 }
