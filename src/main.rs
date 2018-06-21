@@ -1,6 +1,5 @@
 
 use std::fmt;
-use std::collections::HashMap;
 
 const LAMBDA: &'static str = "λ";
 const ALPHA: &'static str = "α";
@@ -157,13 +156,13 @@ impl Term {
         }
     }
 
-    fn fmt(&self, f: &mut fmt::Formatter, depth: u32, symbols: &mut HashMap<u32, String>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter, depth: u32, symbols: &mut Vec<String>) -> fmt::Result {
         use Term::*;
         
         match self {
             &Variable { ref name } => {
                 if name.depth <= depth {
-                    return write!(f, "{}", symbols.get(&(depth - name.depth)).unwrap());
+                    return write!(f, "{}", symbols[(depth - name.depth) as usize]);
                 } else {
                     return write!(f, "{}", name);
                 }
@@ -178,7 +177,8 @@ impl Term {
             &Lambda { ref body } => {
                 let name = format!("x{}", depth);
                 write!(f, "({}{}.", LAMBDA, name)?;
-                symbols.insert(depth, name);
+                assert_eq!(symbols.len(), depth as usize);
+                symbols.push(name);
                 
                 body.fmt(f, depth + 1, symbols)?;
                 return write!(f, ")");
@@ -189,7 +189,7 @@ impl Term {
 
 impl fmt::Display for Term {
     fn fmt(&self, f: &mut fmt::Formatter) ->  fmt::Result {
-        let mut symbols = HashMap::new();
+        let mut symbols = vec![];
         self.fmt(f, 0, &mut symbols)
     }
 }
