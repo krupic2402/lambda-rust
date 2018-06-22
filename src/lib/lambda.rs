@@ -21,7 +21,7 @@ impl fmt::Display for Name {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Term {
     Lambda {
         body: Box<Term>

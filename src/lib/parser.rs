@@ -3,7 +3,8 @@ use ::lambda::{Term, Name};
 
 use std::collections::HashMap;
 
-pub struct ParseError;
+#[derive(Debug, PartialEq)]
+pub struct ParseError(String);
 
 pub fn parse(tokens: &[Token]) -> Result<Term, ParseError> {
     let mut symbols = SymbolTable::new();
@@ -11,7 +12,6 @@ pub fn parse(tokens: &[Token]) -> Result<Term, ParseError> {
     parse_expression(tokens, state).map(|o| o.0).map_err(|e| e.0)
 }
 
-// parsed result + remaining tokens | error
 type PartialParseResult<'a, T> = Result<(T, &'a[Token], ParseState<'a>), (ParseError, ParseState<'a>)>;
 type Depth = u32;
 type SymbolTable = HashMap<String, Depth>;
@@ -26,7 +26,7 @@ macro_rules! expect_token {
             Some(($token, rest)) => {
                 ($expr, rest)
             }
-            _ => return Err((ParseError, $state)),
+            _ => return Err((ParseError(stringify!($token).into()), $state)),
         }
     }};
     ($token:pat, $tokens:expr, $state:expr) => {{
@@ -56,7 +56,7 @@ fn parse_expression<'a>(tokens: &'a[Token], state: ParseState<'a>) -> PartialPar
                     Ok((Term::variable(Name::new(de_bruijn)), rest, state))
                 }
                 None => {
-                    Err((ParseError, state)) 
+                    Err((ParseError("unbound variable".into()), state)) 
                 }
             }
         } else {
@@ -70,9 +70,11 @@ fn parse_expression<'a>(tokens: &'a[Token], state: ParseState<'a>) -> PartialPar
                 }
             };
 
+            let tokens = result.1;
+
             let (_, tokens) = expect_token!(ParenClose, tokens, result.2);
 
-            Ok(result)
+            Ok((result.0, tokens, result.2))
         }
     }
 }
@@ -99,7 +101,7 @@ fn parse_application<'a>(mut tokens: &'a[Token], mut state: ParseState<'a>) -> P
 
     match expr {
         Some(term) => Ok((term, tokens, state)),
-        _ => Err((ParseError, state)),
+        _ => Err((ParseError(format!("empty expression, {:#?}", state.depth)), state)),
     }
 }
 
@@ -123,4 +125,50 @@ fn parse_lambda<'a>(tokens: &'a[Token], state: ParseState<'a>) -> PartialParseRe
     }
 
     Ok((Term::lambda(body), tokens, state))
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_simple_lambda() {
+        let lambda = "(Lx.x)";
+        let tokens = Token::parse_all(lambda).unwrap();
+
+        assert_eq!(
+            Ok(Term::lambda(Term::variable(Name::new(1)))),
+            parse(&tokens),
+        );
+    }
+
+    #[test]
+    fn test_nested_lambda() {
+        let lambda = "(Lf.(Lx.(Ly.(f x y))))";
+        let tokens = Token::parse_all(lambda).unwrap();
+
+        assert_eq!(
+            Ok(Term::lambda(Term::lambda(Term::lambda(
+                Term::apply(
+                    Term::apply(
+                        Term::variable(Name::new(3)),
+                        Term::variable(Name::new(2)),
+                    ),
+                    Term::variable(Name::new(1)),
+                )
+            )))),
+            parse(&tokens),
+        );
+    }
+
+    #[test]
+    fn test_free_variable() {
+        let lambda = "a";
+        let tokens = Token::parse_all(lambda).unwrap();
+
+        assert_eq!(
+            Err(ParseError("unbound variable".into())),
+            parse(&tokens),
+        );
+    }
 }
