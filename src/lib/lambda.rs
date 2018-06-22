@@ -1,6 +1,6 @@
 use std::fmt;
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct Name {
     depth: u32
 }
@@ -10,8 +10,8 @@ impl Name {
         Name { depth }
     }
 
-    fn rebind(&mut self, deepen_by: u32) {
-        self.depth += deepen_by;
+    fn rebind(&mut self, deepen_by: i32) {
+        self.depth = (self.depth as i32 + deepen_by) as u32;
     }
 }
 
@@ -21,7 +21,7 @@ impl fmt::Display for Name {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Term {
     Lambda {
         body: Box<Term>
@@ -38,7 +38,7 @@ pub enum Term {
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Strategy { NormalOrder, ApplicativeOrder }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum EvalResult {
     NormalForm(Term),
     PossiblyReducible(Term)
@@ -77,8 +77,8 @@ impl Term {
         Term::Application { applicand: Box::new(applicand), argument: Box::new(argument) }
     }
 
-    fn rebind_free(&mut self, deepen_by: u32, depth: u32) {
-        match *self {
+    fn rebind_free(&mut self, deepen_by: i32, depth: u32) {
+        match self {
             Term::Variable { ref mut name } => {
                 if name.depth > depth {
                     name.rebind(deepen_by);
@@ -89,13 +89,12 @@ impl Term {
                 argument.rebind_free(deepen_by, depth);
             }
             Term::Lambda { ref mut body } => {
-                body.rebind_free(deepen_by + 1, depth + 1);
+                body.rebind_free(deepen_by, depth + 1);
             }
         }
     }
 
-    fn substitute(self, depth: u32, deepen_by: u32, mut with: Term) -> Term {
-        println!("substitute {} with {} in {}", depth, with, self);
+    fn substitute(self, depth: u32, deepen_by: i32, mut with: Term) -> Term {
         match self {
             Term::Variable { name } => {
                 if name.depth == depth {
@@ -130,7 +129,9 @@ impl Term {
                         let applicand = *applicand;
                         let argument = *argument;
                         if let Term::Lambda { body } = applicand {
-                            return PossiblyReducible(body.substitute(1, 0, argument));
+                            let mut body = body.substitute(1, 1, argument);
+                            body.rebind_free(-1, 0);
+                            return PossiblyReducible(body);
                         } else {
                             let head = applicand.reduce(strategy);
 
@@ -150,7 +151,7 @@ impl Term {
 
     fn fmt(&self, f: &mut fmt::Formatter, depth: u32, symbols: &mut Vec<String>) -> fmt::Result {
         use self::Term::*;
-        
+
         match *self {
             Variable { ref name } => {
                 if name.depth <= depth {
@@ -171,8 +172,9 @@ impl Term {
                 write!(f, "(λ{}.", name)?;
                 assert_eq!(symbols.len(), depth as usize);
                 symbols.push(name);
-                
+
                 body.fmt(f, depth + 1, symbols)?;
+                symbols.pop();
                 return write!(f, ")");
             }
         }
@@ -183,5 +185,101 @@ impl fmt::Display for Term {
     fn fmt(&self, f: &mut fmt::Formatter) ->  fmt::Result {
         let mut symbols = vec![];
         self.fmt(f, 0, &mut symbols)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_reduction_simple() {
+        let term = Term::lambda(Term::apply(
+            Term::lambda(Term::variable(Name::new(1))),
+            Term::variable(Name::new(1))
+        ));
+
+        let result = term.reduce(Strategy::NormalOrder);
+        assert_eq!(
+            EvalResult::PossiblyReducible(Term::lambda(Term::variable(Name::new(1)))),
+            result
+        );
+
+        let result = result.unwrap().reduce(Strategy::NormalOrder);
+        assert_eq!(
+            EvalResult::NormalForm(Term::lambda(Term::variable(Name::new(1)))),
+            result
+        );
+    }
+
+    #[test]
+    fn test_reduction_complex() {
+        let term = Term::apply(
+            Term::lambda(Term::lambda(Term::lambda(
+                Term::apply(
+                    Term::apply(
+                        Term::variable(Name::new(3)),
+                        Term::variable(Name::new(2)),
+                    ),
+                    Term::variable(Name::new(1)),
+                )
+            ))),
+            Term::lambda(Term::lambda(
+                Term::variable(Name::new(2)),
+            )),
+        );
+
+        let result = term.reduce(Strategy::NormalOrder);
+        assert_eq!(
+            EvalResult::PossiblyReducible(
+                Term::lambda(Term::lambda(
+                    Term::apply(
+                        Term::apply(
+                            Term::lambda(Term::lambda(
+                                Term::variable(Name::new(2)),
+                            )),
+                            Term::variable(Name::new(2)),
+                        ),
+                        Term::variable(Name::new(1)),
+                    )
+                ))
+             ),
+             result
+        );
+
+        let result = result.unwrap().reduce(Strategy::NormalOrder);
+        assert_eq!(
+            EvalResult::PossiblyReducible(
+                Term::lambda(Term::lambda(
+                    Term::apply(
+                        Term::lambda(
+                            Term::variable(Name::new(3)),
+                        ),
+                        Term::variable(Name::new(1)),
+                    )
+                ))
+            ),
+            result
+        );
+
+        let result = result.unwrap().reduce(Strategy::NormalOrder);
+        assert_eq!(
+            EvalResult::PossiblyReducible(
+                Term::lambda(Term::lambda(
+                    Term::variable(Name::new(2)),
+                ))
+            ),
+            result
+        );
+
+        let result = result.unwrap().reduce(Strategy::NormalOrder);
+        assert_eq!(
+            EvalResult::NormalForm(
+                Term::lambda(Term::lambda(
+                    Term::variable(Name::new(2)),
+                ))
+            ),
+            result
+        );
     }
 }
