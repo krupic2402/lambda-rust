@@ -7,7 +7,7 @@ use std::collections::HashMap;
 pub enum ParseError<'a> {
     ExpectedToken(&'static str, &'a Token),
     EmptyExpression,
-    NotStartOfExpression,
+    NotStartOfExpression(&'a Token),
     EOF(Vec<&'static str>),
     UnboundVariable(String),
     TrailingTokens(&'a[Token]),
@@ -15,7 +15,7 @@ pub enum ParseError<'a> {
 
 pub fn parse<'a>(tokens: &'a[Token]) -> Result<Term, ParseError<'a>> {
     let mut symbols = SymbolTable::new();
-    let state = ParseState { depth: 0, symbols: &mut symbols };
+    let state = ParseState { lambda_depth: 0, symbols: &mut symbols };
     parse_expression(tokens, state).map_err(|e| e.0).and_then(|(term, remaining, _)| {
         if remaining.is_empty() {
             Ok(term)
@@ -26,10 +26,10 @@ pub fn parse<'a>(tokens: &'a[Token]) -> Result<Term, ParseError<'a>> {
 }
 
 type ParseResult<'a, 'b> = Result<(Term, &'a[Token], ParseState<'b>), (ParseError<'a>, ParseState<'b>)>;
-type Depth = u32;
-type SymbolTable = HashMap<String, Depth>;
+type LambdaDepth = u32;
+type SymbolTable = HashMap<String, LambdaDepth>;
 struct ParseState<'a> {
-    depth: Depth,
+    lambda_depth: LambdaDepth,
     symbols: &'a mut SymbolTable,
 }
 
@@ -70,7 +70,7 @@ fn parse_expression<'a, 'b>(tokens: &'a[Token], state: ParseState<'b>) -> ParseR
             Identifier(name) => {
                 match {state.symbols.get(name)} {
                     Some(&parent) => {
-                        let de_bruijn = state.depth - parent;
+                        let de_bruijn = state.lambda_depth - parent;
                         Ok((Term::variable(Name::new(de_bruijn)), rest, state))
                     }
                     None => {
@@ -94,7 +94,7 @@ fn parse_expression<'a, 'b>(tokens: &'a[Token], state: ParseState<'b>) -> ParseR
                 Ok((expr, tokens, state))
             }
         } else {
-            Err((ParseError::NotStartOfExpression, state))
+            Err((ParseError::NotStartOfExpression(tokens.first().unwrap()), state))
         }
     }
 }
@@ -112,7 +112,7 @@ fn parse_application<'a, 'b>(mut tokens: &'a[Token], mut state: ParseState<'b>) 
                 state = new_state;
                 tokens = new_tokens;
             }
-            Err((ParseError::NotStartOfExpression, err_state)) => {
+            Err((ParseError::NotStartOfExpression(_), err_state)) => {
                 state = err_state;
                 break;
             }
@@ -132,17 +132,16 @@ fn parse_lambda<'a, 'b>(tokens: &'a[Token], state: ParseState<'b>) -> ParseResul
     let (name, tokens) = expect_token!(Identifier(name) => name.clone(), tokens, state);
     let (_, tokens) = expect_token!(Dot, tokens, state);
 
-    let old_binding = state.symbols.insert(name.clone(), state.depth);
+    // perform shadowing binding
+    let old_binding = state.symbols.insert(name.clone(), state.lambda_depth);
+    let state = ParseState { lambda_depth: state.lambda_depth + 1, symbols: state.symbols };
 
-    let (body, tokens, state) = {
-        let state = ParseState { depth: state.depth + 1, symbols: state.symbols };
-        let (body, tokens, state) = parse_expression(tokens, state)?;
-        let state = ParseState { depth: state.depth - 1, symbols: state.symbols };
-        (body, tokens, state) 
-    };
+    let (body, tokens, state) = parse_expression(tokens, state)?;
 
-    if let Some(depth) = old_binding {
-        state.symbols.insert(name, depth);
+    let state = ParseState { lambda_depth: state.lambda_depth - 1, symbols: state.symbols };
+    // recover old binding if present
+    if let Some(lambda_depth) = old_binding {
+        state.symbols.insert(name, lambda_depth);
     }
 
     Ok((Term::lambda(body), tokens, state))
