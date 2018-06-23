@@ -7,6 +7,7 @@ use std::collections::HashMap;
 pub enum ParseError {
     ExpectedToken(String),
     EmptyExpression,
+    NotStartOfExpression,
     EOF(String),
     UnboundVariable(String),
 }
@@ -41,10 +42,13 @@ macro_rules! expect_token {
 }
 
 macro_rules! try_expect_token {
-    (($tokens:expr, $rest:ident) if $token:pat => $found:block else $failed:block) => {{
+    (($tokens:expr, $rest:pat, $state:expr) { $($token:pat => $found:expr)* } else $failed:block) => {{
         #[allow(unused_variables)]
         match $tokens.split_first() {
-            Some(($token, $rest)) => $found
+            $(
+            Some(($token, $rest)) => { $found }
+            ),*
+            None => return Err((ParseError::EOF("eof".into()), $state)),
             _ => $failed
         }
     }};
@@ -55,32 +59,35 @@ fn parse_expression<'a>(tokens: &'a[Token], state: ParseState<'a>) -> PartialPar
     use self::Token::*;
     
     try_expect_token! {
-        (tokens, rest) if Identifier(name) => {
-            match {state.symbols.get(name)} {
-                Some(&parent) => {
-                    let de_bruijn = state.depth - parent;
-                    Ok((Term::variable(Name::new(de_bruijn)), rest, state))
-                }
-                None => {
-                    Err((ParseError::UnboundVariable(name.clone()), state))
+        (tokens, rest, state) {
+            Identifier(name) => {
+                match {state.symbols.get(name)} {
+                    Some(&parent) => {
+                        let de_bruijn = state.depth - parent;
+                        Ok((Term::variable(Name::new(de_bruijn)), rest, state))
+                    }
+                    None => {
+                        Err((ParseError::UnboundVariable(name.clone()), state))
+                    }
                 }
             }
+            ParenOpen => {
+                let tokens = rest;
+
+                let (expr, tokens, state) = try_expect_token! {
+                    (tokens, _, state) {
+                        Lambda => parse_lambda(tokens, state)?
+                    } else {
+                        parse_application(tokens, state)?
+                    }
+                };
+
+                let (_, tokens) = expect_token!(ParenClose, tokens, state);
+
+                Ok((expr, tokens, state))
+            }
         } else {
-            let (_, tokens) = expect_token!(ParenOpen, tokens, state);
-            
-            let result = try_expect_token! {
-                (tokens, rest) if Lambda => {
-                    parse_lambda(tokens, state)?
-                } else {
-                    parse_application(tokens, state)?
-                }
-            };
-
-            let tokens = result.1;
-
-            let (_, tokens) = expect_token!(ParenClose, tokens, result.2);
-
-            Ok((result.0, tokens, result.2))
+            Err((ParseError::NotStartOfExpression, state))
         }
     }
 }
