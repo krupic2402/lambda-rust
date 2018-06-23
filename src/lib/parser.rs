@@ -31,7 +31,7 @@ impl<'a> fmt::Display for ParseError<'a> {
     }
 }
 
-pub fn parse<'a>(tokens: &'a[Token]) -> Result<Term, ParseError<'a>> {
+pub fn parse(tokens: &[Token]) -> Result<Term, ParseError> {
     let mut symbols = SymbolTable::new();
     let state = ParseState { lambda_depth: 0, symbols: &mut symbols };
 
