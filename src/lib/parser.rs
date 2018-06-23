@@ -105,11 +105,11 @@ fn parse_application<'a>(mut tokens: &'a[Token], mut state: ParseState<'a>) -> P
                 state = new_state;
                 tokens = new_tokens;
             }
-            Err((e, err_state)) => {
-                println!("debug: {:?}", e);
+            Err((ParseError::NotStartOfExpression, err_state)) => {
                 state = err_state;
                 break;
             }
+            e => return e,
         }
     } 
 
