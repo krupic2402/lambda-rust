@@ -5,6 +5,7 @@ use lambda_rust::{
     lambda::*,
     lexer::Token,
     parser::parse,
+    runtime::*,
 };
 
 use rustyline::error::ReadlineError;
@@ -64,11 +65,16 @@ fn interpret<S: AsRef<str>>(input: S) {
             println!("{}", e);
             return;
         }
-        Ok(ref t) => println!(" : {}", t),
+        Ok(Statement::LetStatement(ref b)) => println!(" : {:?}", b),
+        Ok(Statement::Expression(ref t)) => println!(" : {}", t),
     }
 
+    
 
-    let mut term = term.unwrap();
+    let mut term = match term.unwrap() {
+        Statement::Expression(t) => t,
+        _ => return,
+    };
     let mut seen_terms = HashSet::new();
     loop {
         if seen_terms.len() > MAX_REDUCTIONS {
