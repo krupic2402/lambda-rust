@@ -16,13 +16,16 @@ pub enum ParseError<'a> {
 pub fn parse<'a>(tokens: &'a[Token]) -> Result<Term, ParseError<'a>> {
     let mut symbols = SymbolTable::new();
     let state = ParseState { lambda_depth: 0, symbols: &mut symbols };
-    parse_expression(tokens, state).map_err(|e| e.0).and_then(|(term, remaining, _)| {
-        if remaining.is_empty() {
-            Ok(term)
-        } else {
-            Err(ParseError::TrailingTokens(remaining))
-        }
-    })
+
+    parse_expression(tokens, state)
+        .map_err(|e| e.0)
+        .and_then(|(term, remaining, _)| {
+            if remaining.is_empty() {
+                Ok(term)
+            } else {
+                Err(ParseError::TrailingTokens(remaining))
+            }
+        })
 }
 
 type ParseResult<'a, 'b> = Result<(Term, &'a[Token], ParseState<'b>), (ParseError<'a>, ParseState<'b>)>;
@@ -152,7 +155,7 @@ mod test {
     use super::*;
 
     #[test]
-    fn test_simple_lambda() {
+    fn test_parse_simple_lambda() {
         let lambda = "(Lx.x)";
         let tokens = Token::parse_all(lambda).unwrap();
 
@@ -163,7 +166,7 @@ mod test {
     }
 
     #[test]
-    fn test_nested_lambda() {
+    fn test_parse_nested_lambda() {
         let lambda = "(Lf.(Lx.(Ly.(f x y))))";
         let tokens = Token::parse_all(lambda).unwrap();
 
@@ -182,7 +185,7 @@ mod test {
     }
 
     #[test]
-    fn test_free_variable() {
+    fn test_parse_free_variable() {
         let lambda = "a";
         let tokens = Token::parse_all(lambda).unwrap();
 

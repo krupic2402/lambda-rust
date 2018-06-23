@@ -182,7 +182,7 @@ impl Term {
 }
 
 impl fmt::Display for Term {
-    fn fmt(&self, f: &mut fmt::Formatter) ->  fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut symbols = vec![];
         self.fmt(f, 0, &mut symbols)
     }
