@@ -7,6 +7,8 @@ pub enum Token {
     Lambda,
     Dot,
     Identifier(String),
+    Let,
+    Define,
 }
 
 impl fmt::Display for Token {
@@ -19,6 +21,8 @@ impl fmt::Display for Token {
             Lambda => write!(f, "λ"),
             Dot => write!(f, "."),
             Identifier(ref name) => write!(f, "{}", name),
+            Let => write!(f, "let"),
+            Define => write!(f, "="),
         }
     }
 }
@@ -40,16 +44,21 @@ impl Token {
                 ')' => tokens.push(ParenClose),
                 'λ' | 'L' => tokens.push(Lambda),
                 '.' => tokens.push(Dot),
+                '=' => tokens.push(Define),
                 c if c.is_ascii_alphanumeric()  => {
-                    let mut identifier: String = String::new();
-                    identifier.push(c);
+                    let mut word: String = String::new();
+                    word.push(c);
 
                     while let Some(&c) = iterator.peek() {
                         if !c.is_ascii_alphanumeric() { break; }
-                        identifier.push(iterator.next().unwrap());
+                        word.push(iterator.next().unwrap());
                     }
 
-                    tokens.push(Identifier(identifier));
+                    if word == "let" {
+                        tokens.push(Let);
+                    } else {
+                        tokens.push(Identifier(word));
+                    }
                 }
                 _ => return Err(ParseTokenError(format!("Invalid token: {}", c))),
             }
@@ -65,21 +74,35 @@ mod test {
     use self::Token::*;
 
     #[test]
-    fn test_parse_all() {
-
+    fn test_parse_tokens_correct() {
         assert_eq!(
             Ok(vec![ParenOpen, Lambda, Identifier("x".into()), Dot, Identifier("x".into()), ParenClose]),
             Token::parse_all("  (Lx.  x  ) ")
         );
+    }
         
-        assert_eq!(
+    #[test]
+    fn test_parse_tokens_invalid() {
+         assert_eq!(
             Err(ParseTokenError("Invalid token: [".into())),
             Token::parse_all("[Lx.x]"),
         );
+    }
 
-        assert_eq!(
+    #[test]
+    fn test_parse_tokens_empty() {
+         assert_eq!(
             Ok(vec![]),
             Token::parse_all(" "),
+        );
+    }
+
+    #[test]
+    fn test_parse_tokens_let_statement() {
+         assert_eq!(
+            Ok(vec![Let, Identifier("I".into()), Define,
+                ParenOpen, Lambda, Identifier("x".into()), Dot, Identifier("x".into()), ParenClose]),
+            Token::parse_all("let I = (Lx.x)"),
         );
     }
 }

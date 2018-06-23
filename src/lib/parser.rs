@@ -54,7 +54,7 @@ pub fn parse(tokens: &[Token]) -> Result<Term, ParseError> {
         })
 }
 
-type ParseResult<'a, 'b> = Result<(Term, &'a[Token], ParseState<'b>), (ParseError<'a>, ParseState<'b>)>;
+type ParseResult<'a, 'b, T> = Result<(T, &'a[Token], ParseState<'b>), (ParseError<'a>, ParseState<'b>)>;
 type LambdaDepth = u32;
 type SymbolTable = HashMap<String, LambdaDepth>;
 struct ParseState<'a> {
@@ -90,8 +90,17 @@ macro_rules! try_expect_token {
     }};
 }
 
+fn parse_let_statement<'a, 'b>(tokens: &'a[Token], state: ParseState<'b>) -> ParseResult<'a, 'b, Term> {
+    use self::Token::*;
 
-fn parse_expression<'a, 'b>(tokens: &'a[Token], state: ParseState<'b>) -> ParseResult<'a, 'b> {
+    let (_, tokens) = expect_token!(Let, tokens, state);
+    let (name, tokens) = expect_token!(Identifier(name) => name.clone(), tokens, state);
+    let (_, tokens) = expect_token!(Define, tokens, state);
+
+    parse_expression(tokens, state)
+}
+
+fn parse_expression<'a, 'b>(tokens: &'a[Token], state: ParseState<'b>) -> ParseResult<'a, 'b, Term> {
     use self::Token::*;
     
     try_expect_token! {
@@ -128,7 +137,7 @@ fn parse_expression<'a, 'b>(tokens: &'a[Token], state: ParseState<'b>) -> ParseR
     }
 }
 
-fn parse_application<'a, 'b>(mut tokens: &'a[Token], mut state: ParseState<'b>) -> ParseResult<'a, 'b> {
+fn parse_application<'a, 'b>(mut tokens: &'a[Token], mut state: ParseState<'b>) -> ParseResult<'a, 'b, Term> {
     let mut expr = None;
 
     loop {
@@ -155,7 +164,7 @@ fn parse_application<'a, 'b>(mut tokens: &'a[Token], mut state: ParseState<'b>) 
     }
 }
 
-fn parse_lambda<'a, 'b>(tokens: &'a[Token], state: ParseState<'b>) -> ParseResult<'a, 'b> {
+fn parse_lambda<'a, 'b>(tokens: &'a[Token], state: ParseState<'b>) -> ParseResult<'a, 'b, Term> {
     use self::Token::*;
     let (_, tokens) = expect_token!(Lambda, tokens, state);
     let (name, tokens) = expect_token!(Identifier(name) => name.clone(), tokens, state);
