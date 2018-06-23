@@ -1,23 +1,49 @@
 use std::fmt;
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
-pub struct Name {
-    depth: u32
+pub enum Name {
+    Bound { depth: u32 },
+    Free { name: String },
 }
 
 impl Name {
-    pub fn new(depth: u32) -> Name {
-        Name { depth }
+    pub fn bound(depth: u32) -> Name {
+        Name::Bound { depth }
+    }
+
+    pub fn free(name: String) -> Name {
+        Name::Free { name }
     }
 
     fn rebind(&mut self, deepen_by: i32) {
-        self.depth = (self.depth as i32 + deepen_by) as u32;
+        if let Name::Bound { ref mut depth } = *self {
+            *depth = (*depth as i32 + deepen_by) as u32;
+        }
+    }
+
+    fn depth(&self) -> Option<u32> {
+        match *self {
+            Name::Bound { depth } => Some(depth),
+            _ => None,
+        }
+    }
+
+    fn free_for(&self, depth: u32) -> bool {
+        let d = self.depth();
+        d.is_none() || d > Some(depth)
+    }
+
+    fn bound_at(&self, depth: u32) -> bool {
+        self.depth() == Some(depth)
     }
 }
 
 impl fmt::Display for Name {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "↑{}", self.depth)
+        match *self {
+            Name::Bound { ref depth } => write!(f, "↑{}", depth),
+            Name::Free { ref name } => write!(f, "{}", name),
+        }
     }
 }
 
@@ -80,7 +106,7 @@ impl Term {
     fn rebind_free(&mut self, deepen_by: i32, depth: u32) {
         match self {
             Term::Variable { ref mut name } => {
-                if name.depth > depth {
+                if name.free_for(depth) {
                     name.rebind(deepen_by);
                 }
             }
@@ -97,7 +123,7 @@ impl Term {
     fn substitute(self, depth: u32, deepen_by: i32, mut with: Term) -> Term {
         match self {
             Term::Variable { name } => {
-                if name.depth == depth {
+                if name.bound_at(depth) {
                     with.rebind_free(deepen_by, 0);
                     with
                 } else {
@@ -154,8 +180,8 @@ impl Term {
 
         match *self {
             Variable { ref name } => {
-                if name.depth <= depth {
-                    return write!(f, "{}", symbols[(depth - name.depth) as usize]);
+                if !name.free_for(depth) {
+                    return write!(f, "{}", symbols[(depth - name.depth().unwrap()) as usize]);
                 } else {
                     return write!(f, "{}", name);
                 }
@@ -195,19 +221,19 @@ mod test {
     #[test]
     fn test_reduction_simple() {
         let term = Term::lambda(Term::apply(
-            Term::lambda(Term::variable(Name::new(1))),
-            Term::variable(Name::new(1))
+            Term::lambda(Term::variable(Name::bound(1))),
+            Term::variable(Name::bound(1))
         ));
 
         let result = term.reduce(Strategy::NormalOrder);
         assert_eq!(
-            EvalResult::PossiblyReducible(Term::lambda(Term::variable(Name::new(1)))),
+            EvalResult::PossiblyReducible(Term::lambda(Term::variable(Name::bound(1)))),
             result
         );
 
         let result = result.unwrap().reduce(Strategy::NormalOrder);
         assert_eq!(
-            EvalResult::NormalForm(Term::lambda(Term::variable(Name::new(1)))),
+            EvalResult::NormalForm(Term::lambda(Term::variable(Name::bound(1)))),
             result
         );
     }
@@ -218,14 +244,14 @@ mod test {
             Term::lambda(Term::lambda(Term::lambda(
                 Term::apply(
                     Term::apply(
-                        Term::variable(Name::new(3)),
-                        Term::variable(Name::new(2)),
+                        Term::variable(Name::bound(3)),
+                        Term::variable(Name::bound(2)),
                     ),
-                    Term::variable(Name::new(1)),
+                    Term::variable(Name::bound(1)),
                 )
             ))),
             Term::lambda(Term::lambda(
-                Term::variable(Name::new(2)),
+                Term::variable(Name::bound(2)),
             )),
         );
 
@@ -236,11 +262,11 @@ mod test {
                     Term::apply(
                         Term::apply(
                             Term::lambda(Term::lambda(
-                                Term::variable(Name::new(2)),
+                                Term::variable(Name::bound(2)),
                             )),
-                            Term::variable(Name::new(2)),
+                            Term::variable(Name::bound(2)),
                         ),
-                        Term::variable(Name::new(1)),
+                        Term::variable(Name::bound(1)),
                     )
                 ))
              ),
@@ -253,9 +279,9 @@ mod test {
                 Term::lambda(Term::lambda(
                     Term::apply(
                         Term::lambda(
-                            Term::variable(Name::new(3)),
+                            Term::variable(Name::bound(3)),
                         ),
-                        Term::variable(Name::new(1)),
+                        Term::variable(Name::bound(1)),
                     )
                 ))
             ),
@@ -266,7 +292,7 @@ mod test {
         assert_eq!(
             EvalResult::PossiblyReducible(
                 Term::lambda(Term::lambda(
-                    Term::variable(Name::new(2)),
+                    Term::variable(Name::bound(2)),
                 ))
             ),
             result
@@ -276,7 +302,7 @@ mod test {
         assert_eq!(
             EvalResult::NormalForm(
                 Term::lambda(Term::lambda(
-                    Term::variable(Name::new(2)),
+                    Term::variable(Name::bound(2)),
                 ))
             ),
             result

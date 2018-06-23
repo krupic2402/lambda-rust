@@ -92,7 +92,7 @@ fn parse_expression<'a, 'b>(tokens: &'a[Token], state: ParseState<'b>) -> ParseR
                 match {state.symbols.get(name)} {
                     Some(&parent) => {
                         let de_bruijn = state.lambda_depth - parent;
-                        Ok((Term::variable(Name::new(de_bruijn)), rest, state))
+                        Ok((Term::variable(Name::bound(de_bruijn)), rest, state))
                     }
                     None => {
                         Err((ParseError::UnboundVariable(name.clone()), state))
@@ -178,7 +178,7 @@ mod test {
         let tokens = Token::parse_all(lambda).unwrap();
 
         assert_eq!(
-            Ok(Term::lambda(Term::variable(Name::new(1)))),
+            Ok(Term::lambda(Term::variable(Name::bound(1)))),
             parse(&tokens),
         );
     }
@@ -192,10 +192,10 @@ mod test {
             Ok(Term::lambda(Term::lambda(Term::lambda(
                 Term::apply(
                     Term::apply(
-                        Term::variable(Name::new(3)),
-                        Term::variable(Name::new(2)),
+                        Term::variable(Name::bound(3)),
+                        Term::variable(Name::bound(2)),
                     ),
-                    Term::variable(Name::new(1)),
+                    Term::variable(Name::bound(1)),
                 )
             )))),
             parse(&tokens),
