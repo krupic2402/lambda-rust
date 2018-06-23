@@ -30,8 +30,18 @@ fn main() {
             }
         };
 
-        if ":quit".starts_with(input.trim()) && input.trim().len() > 1 {
-            exit();
+        let input = input.trim();
+        if input.is_empty() { continue; }
+
+        if input.starts_with(':') {
+            let command = &input[1..];
+            if command.is_empty() { continue; }
+
+            if "quit".starts_with(command) {
+                exit();
+            }
+
+            continue;
         }
 
         interpret(input);
