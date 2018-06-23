@@ -5,10 +5,10 @@ use std::collections::HashMap;
 
 #[derive(Debug, PartialEq)]
 pub enum ParseError<'a> {
-    ExpectedToken(String),
+    ExpectedToken(&'static str, &'a Token),
     EmptyExpression,
     NotStartOfExpression,
-    EOF(String),
+    EOF(Vec<&'static str>),
     UnboundVariable(String),
     TrailingTokens(&'a[Token]),
 }
@@ -39,8 +39,8 @@ macro_rules! expect_token {
             Some(($token, rest)) => {
                 ($expr, rest)
             }
-            None => return Err((ParseError::EOF(stringify!($token).into()), $state)),
-            _ => return Err((ParseError::ExpectedToken(stringify!($token).into()), $state)),
+            None => return Err((ParseError::EOF(vec![stringify!($token)]), $state)),
+            _ => return Err((ParseError::ExpectedToken(stringify!($token), $tokens.first().unwrap()), $state)),
         }
     }};
     ($token:pat, $tokens:expr, $state:expr) => {{
@@ -55,7 +55,7 @@ macro_rules! try_expect_token {
             $(
             Some(($token, $rest)) => { $found }
             ),*
-            None => return Err((ParseError::EOF("eof".into()), $state)),
+            None => return Err((ParseError::EOF(vec![$( stringify!($token) ),*]), $state)),
             _ => $failed
         }
     }};
