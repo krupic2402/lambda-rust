@@ -48,6 +48,8 @@ fn main() {
     }
 }
 
+const MAX_REDUCTIONS: usize = 1000;
+
 fn interpret<S: AsRef<str>>(input: S) {
     let tokens = Token::parse_all(input.as_ref());
     if let Err(ref e) = tokens {
@@ -69,6 +71,11 @@ fn interpret<S: AsRef<str>>(input: S) {
     let mut term = term.unwrap();
     let mut seen_terms = HashSet::new();
     loop {
+        if seen_terms.len() > MAX_REDUCTIONS {
+            println!("[too many reductions]");
+            return;
+        }
+
         let reduct = term.reduce(Strategy::NormalOrder);
         print!("β: ");
         match reduct {
