@@ -4,21 +4,28 @@ use ::lambda::{Term, Name};
 use std::collections::HashMap;
 
 #[derive(Debug, PartialEq)]
-pub enum ParseError {
+pub enum ParseError<'a> {
     ExpectedToken(String),
     EmptyExpression,
     NotStartOfExpression,
     EOF(String),
     UnboundVariable(String),
+    TrailingTokens(&'a[Token]),
 }
 
-pub fn parse(tokens: &[Token]) -> Result<Term, ParseError> {
+pub fn parse<'a>(tokens: &'a[Token]) -> Result<Term, ParseError<'a>> {
     let mut symbols = SymbolTable::new();
     let state = ParseState { depth: 0, symbols: &mut symbols };
-    parse_expression(tokens, state).map(|o| o.0).map_err(|e| e.0)
+    parse_expression(tokens, state).map_err(|e| e.0).and_then(|(term, remaining, _)| {
+        if remaining.is_empty() {
+            Ok(term)
+        } else {
+            Err(ParseError::TrailingTokens(remaining))
+        }
+    })
 }
 
-type PartialParseResult<'a, T> = Result<(T, &'a[Token], ParseState<'a>), (ParseError, ParseState<'a>)>;
+type ParseResult<'a, 'b> = Result<(Term, &'a[Token], ParseState<'b>), (ParseError<'a>, ParseState<'b>)>;
 type Depth = u32;
 type SymbolTable = HashMap<String, Depth>;
 struct ParseState<'a> {
@@ -55,7 +62,7 @@ macro_rules! try_expect_token {
 }
 
 
-fn parse_expression<'a>(tokens: &'a[Token], state: ParseState<'a>) -> PartialParseResult<'a, Term> {
+fn parse_expression<'a, 'b>(tokens: &'a[Token], state: ParseState<'b>) -> ParseResult<'a, 'b> {
     use self::Token::*;
     
     try_expect_token! {
@@ -92,7 +99,7 @@ fn parse_expression<'a>(tokens: &'a[Token], state: ParseState<'a>) -> PartialPar
     }
 }
 
-fn parse_application<'a>(mut tokens: &'a[Token], mut state: ParseState<'a>) -> PartialParseResult<'a, Term> {
+fn parse_application<'a, 'b>(mut tokens: &'a[Token], mut state: ParseState<'b>) -> ParseResult<'a, 'b> {
     let mut expr = None;
 
     loop {
@@ -119,7 +126,7 @@ fn parse_application<'a>(mut tokens: &'a[Token], mut state: ParseState<'a>) -> P
     }
 }
 
-fn parse_lambda<'a>(tokens: &'a[Token], state: ParseState<'a>) -> PartialParseResult<'a, Term> {
+fn parse_lambda<'a, 'b>(tokens: &'a[Token], state: ParseState<'b>) -> ParseResult<'a, 'b> {
     use self::Token::*;
     let (_, tokens) = expect_token!(Lambda, tokens, state);
     let (name, tokens) = expect_token!(Identifier(name) => name.clone(), tokens, state);
