@@ -1,5 +1,6 @@
 use ::lexer::Token;
 use ::lambda::{Term, Name};
+use ::runtime::{Binding, Statement};
 
 use std::collections::HashMap;
 use std::fmt;
@@ -39,15 +40,15 @@ impl<'a> fmt::Display for ParseError<'a> {
     }
 }
 
-pub fn parse(tokens: &[Token]) -> Result<Term, ParseError> {
+pub fn parse(tokens: &[Token]) -> Result<Statement, ParseError> {
     let mut symbols = SymbolTable::new();
     let state = ParseState { lambda_depth: 0, symbols: &mut symbols };
 
-    parse_expression(tokens, state)
+    parse_toplevel(tokens, state)
         .map_err(|e| e.0)
-        .and_then(|(term, remaining, _)| {
+        .and_then(|(statement, remaining, _)| {
             if remaining.is_empty() {
-                Ok(term)
+                Ok(statement)
             } else {
                 Err(ParseError::TrailingTokens(remaining))
             }
@@ -90,14 +91,28 @@ macro_rules! try_expect_token {
     }};
 }
 
-fn parse_let_statement<'a, 'b>(tokens: &'a[Token], state: ParseState<'b>) -> ParseResult<'a, 'b, Term> {
+fn parse_toplevel<'a, 'b>(tokens: &'a[Token], state: ParseState<'b>) -> ParseResult<'a, 'b, Statement> {
+    use self::Token::*;
+    use self::Statement::*;
+
+    try_expect_token! {
+        (tokens, _, state) {
+            Let => parse_let_statement(tokens, state).map(|(b, t, s)| (LetStatement(b), t, s))
+        } else {
+            parse_expression(tokens, state).map(|(e, t, s)| (Expression(e), t, s))
+        }
+    }
+}
+
+fn parse_let_statement<'a, 'b>(tokens: &'a[Token], state: ParseState<'b>) -> ParseResult<'a, 'b, Binding> {
     use self::Token::*;
 
     let (_, tokens) = expect_token!(Let, tokens, state);
     let (name, tokens) = expect_token!(Identifier(name) => name.clone(), tokens, state);
     let (_, tokens) = expect_token!(Define, tokens, state);
 
-    parse_expression(tokens, state)
+    let (term, tokens, state) = parse_expression(tokens, state)?;
+    Ok((Binding::new(name, term), tokens, state))
 }
 
 fn parse_expression<'a, 'b>(tokens: &'a[Token], state: ParseState<'b>) -> ParseResult<'a, 'b, Term> {
@@ -195,7 +210,7 @@ mod test {
         let tokens = Token::parse_all(lambda).unwrap();
 
         assert_eq!(
-            Ok(Term::lambda(Term::variable(Name::bound(1)))),
+            Ok(Statement::Expression(Term::lambda(Term::variable(Name::bound(1))))),
             parse(&tokens),
         );
     }
@@ -206,7 +221,7 @@ mod test {
         let tokens = Token::parse_all(lambda).unwrap();
 
         assert_eq!(
-            Ok(Term::lambda(Term::lambda(Term::lambda(
+            Ok(Statement::Expression(Term::lambda(Term::lambda(Term::lambda(
                 Term::apply(
                     Term::apply(
                         Term::variable(Name::bound(3)),
@@ -214,7 +229,7 @@ mod test {
                     ),
                     Term::variable(Name::bound(1)),
                 )
-            )))),
+            ))))),
             parse(&tokens),
         );
     }
@@ -225,7 +240,21 @@ mod test {
         let tokens = Token::parse_all(lambda).unwrap();
 
         assert_eq!(
-            Ok(Term::variable(Name::free("a".into()))),
+            Ok(Statement::Expression(Term::variable(Name::free("a".into())))),
+            parse(&tokens),
+        );
+    }
+
+    #[test]
+    fn test_parse_let_statement() {
+        let lambda = "let I = (Lx.x)";
+        let tokens = Token::parse_all(lambda).unwrap();
+
+        assert_eq!(
+            Ok(Statement::LetStatement(Binding::new(
+                    "I",
+                    Term::lambda(Term::variable(Name::bound(1))),
+            ))),
             parse(&tokens),
         );
     }

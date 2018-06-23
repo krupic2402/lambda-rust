@@ -2,7 +2,7 @@ use ::lambda::Term;
 
 use std::collections::HashMap;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Binding {
     identifier: String,
     value: Term,
@@ -17,10 +17,17 @@ impl Binding {
     }
 }
 
+#[derive(Debug)]
 pub struct SymbolTable(HashMap<String, Term>);
 
 impl SymbolTable {
     pub fn insert(&mut self, binding: Binding) {
         self.0.insert(binding.identifier, binding.value);
     }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Statement {
+    LetStatement(Binding),
+    Expression(Term),
 }
