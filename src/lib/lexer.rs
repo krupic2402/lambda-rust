@@ -24,7 +24,7 @@ impl fmt::Display for Token {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct ParseTokenError;
+pub struct ParseTokenError(String);
 
 impl Token {
     pub fn parse_all(s: &str) -> Result<Vec<Token>, ParseTokenError> {
@@ -44,23 +44,14 @@ impl Token {
                     let mut identifier: String = String::new();
                     identifier.push(c);
 
-                    loop {
-                        let c = {
-                            let c = iterator.peek();
-                            if c.is_none() { break; }
-                            *c.unwrap()
-                        };
-
-                        if c.is_ascii_alphanumeric() {
-                            identifier.push(iterator.next().unwrap());
-                        } else {
-                            break;
-                        }
+                    while let Some(&c) = iterator.peek() {
+                        if !c.is_ascii_alphanumeric() { break; }
+                        identifier.push(iterator.next().unwrap());
                     }
 
                     tokens.push(Identifier(identifier));
                 }
-                _ => return Err(ParseTokenError),
+                _ => return Err(ParseTokenError(format!("Invalid token: {}", c))),
             }
         }
 
@@ -82,7 +73,7 @@ mod test {
         );
         
         assert_eq!(
-            Err(ParseTokenError),
+            Err(ParseTokenError("Invalid token: [".into())),
             Token::parse_all("[Lx.x]"),
         );
 
