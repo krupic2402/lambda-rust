@@ -2,6 +2,8 @@ use ::lexer::Token;
 use ::lambda::{Term, Name};
 
 use std::collections::HashMap;
+use std::fmt;
+use std::string::ToString;
 
 #[derive(Debug, PartialEq)]
 pub enum ParseError<'a> {
@@ -11,6 +13,22 @@ pub enum ParseError<'a> {
     EOF(Vec<&'static str>),
     UnboundVariable(String),
     TrailingTokens(&'a[Token]),
+}
+
+impl<'a> fmt::Display for ParseError<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::ParseError::*;
+
+        match *self {
+            ExpectedToken(ref pattern, ref got_token) => write!(f, "Expected {} but got token '{}'", pattern, got_token),
+            EmptyExpression => write!(f, "Empty subexpression"),
+            NotStartOfExpression(ref got_token) => write!(f, "Invalid token at start of experssion: '{}'", got_token),
+            EOF(ref patterns) => write!(f, "Got EOF while expecting any of: {}", patterns.join(", ")),
+            UnboundVariable(ref variable) => write!(f, "Unbound variable: '{}'", variable),
+            TrailingTokens(ref tokens) => write!(f, "Trailing tokens: '{}'",
+                                                 tokens.iter().map(ToString::to_string).collect::<Vec<_>>().concat()),
+        }
+    }
 }
 
 pub fn parse<'a>(tokens: &'a[Token]) -> Result<Term, ParseError<'a>> {

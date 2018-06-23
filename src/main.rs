@@ -22,7 +22,7 @@ fn main() {
 
         let tokens = Token::parse_all(&input);
         if let Err(ref e) = tokens {
-            println!("{:?}", e);
+            println!("{}", e.0);
             continue;
         }
 
@@ -30,7 +30,7 @@ fn main() {
         let term = parse(&tokens);
         match term {
             Err(ref e) => {
-                println!("{:?}", e);
+                println!("{}", e);
                 continue;
             }
             Ok(ref t) => println!(" : {}", t),

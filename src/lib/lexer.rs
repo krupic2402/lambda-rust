@@ -24,7 +24,7 @@ impl fmt::Display for Token {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct ParseTokenError(String);
+pub struct ParseTokenError(pub String);
 
 impl Token {
     pub fn parse_all(s: &str) -> Result<Vec<Token>, ParseTokenError> {
