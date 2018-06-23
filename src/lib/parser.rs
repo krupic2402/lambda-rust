@@ -95,7 +95,7 @@ fn parse_expression<'a, 'b>(tokens: &'a[Token], state: ParseState<'b>) -> ParseR
                         Ok((Term::variable(Name::bound(de_bruijn)), rest, state))
                     }
                     None => {
-                        Err((ParseError::UnboundVariable(name.clone()), state))
+                        Ok((Term::variable(Name::free(name.clone())), rest, state))
                     }
                 }
             }
@@ -208,7 +208,7 @@ mod test {
         let tokens = Token::parse_all(lambda).unwrap();
 
         assert_eq!(
-            Err(ParseError::UnboundVariable("a".into())),
+            Ok(Term::variable(Name::free("a".into()))),
             parse(&tokens),
         );
     }
