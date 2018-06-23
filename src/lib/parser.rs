@@ -4,7 +4,12 @@ use ::lambda::{Term, Name};
 use std::collections::HashMap;
 
 #[derive(Debug, PartialEq)]
-pub struct ParseError(String);
+pub enum ParseError {
+    ExpectedToken(String),
+    EmptyExpression,
+    EOF(String),
+    UnboundVariable(String),
+}
 
 pub fn parse(tokens: &[Token]) -> Result<Term, ParseError> {
     let mut symbols = SymbolTable::new();
@@ -26,7 +31,8 @@ macro_rules! expect_token {
             Some(($token, rest)) => {
                 ($expr, rest)
             }
-            _ => return Err((ParseError(stringify!($token).into()), $state)),
+            None => return Err((ParseError::EOF(stringify!($token).into()), $state)),
+            _ => return Err((ParseError::ExpectedToken(stringify!($token).into()), $state)),
         }
     }};
     ($token:pat, $tokens:expr, $state:expr) => {{
@@ -56,7 +62,7 @@ fn parse_expression<'a>(tokens: &'a[Token], state: ParseState<'a>) -> PartialPar
                     Ok((Term::variable(Name::new(de_bruijn)), rest, state))
                 }
                 None => {
-                    Err((ParseError("unbound variable".into()), state)) 
+                    Err((ParseError::UnboundVariable(name.clone()), state))
                 }
             }
         } else {
@@ -92,7 +98,8 @@ fn parse_application<'a>(mut tokens: &'a[Token], mut state: ParseState<'a>) -> P
                 state = new_state;
                 tokens = new_tokens;
             }
-            Err((_, err_state)) => {
+            Err((e, err_state)) => {
+                println!("debug: {:?}", e);
                 state = err_state;
                 break;
             }
@@ -101,7 +108,7 @@ fn parse_application<'a>(mut tokens: &'a[Token], mut state: ParseState<'a>) -> P
 
     match expr {
         Some(term) => Ok((term, tokens, state)),
-        _ => Err((ParseError(format!("empty expression, {:#?}", state.depth)), state)),
+        _ => Err((ParseError::EmptyExpression, state)),
     }
 }
 
@@ -167,7 +174,7 @@ mod test {
         let tokens = Token::parse_all(lambda).unwrap();
 
         assert_eq!(
-            Err(ParseError("unbound variable".into())),
+            Err(ParseError::UnboundVariable("a".into())),
             parse(&tokens),
         );
     }
