@@ -15,6 +15,7 @@ use std::process;
 
 fn main() {
     let mut editor = rustyline::Editor::<()>::new();
+    let mut runtime = Environment::new();
 
     loop {
         let input = match editor.readline("> ") {
@@ -45,13 +46,13 @@ fn main() {
             continue;
         }
 
-        interpret(input);
+        interpret(input, &mut runtime);
     }
 }
 
 const MAX_REDUCTIONS: usize = 1000;
 
-fn interpret<S: AsRef<str>>(input: S) {
+fn interpret<S: AsRef<str>>(input: S, env: &mut impl SymbolTable) {
     let tokens = Token::parse_all(input.as_ref());
     if let Err(ref e) = tokens {
         println!("{}", e.0);
@@ -59,22 +60,30 @@ fn interpret<S: AsRef<str>>(input: S) {
     }
 
     let tokens = tokens.unwrap();
-    let term = parse(&tokens);
-    match term {
+    let statement = parse(&tokens);
+    match statement {
         Err(ref e) => {
             println!("{}", e);
             return;
         }
-        Ok(Statement::LetStatement(ref b)) => println!(" : {:?}", b),
-        Ok(Statement::Expression(ref t)) => println!(" : {}", t),
+        Ok(Statement::LetStatement(binding)) => {
+            add_binding(binding, env);
+        }
+        Ok(Statement::Expression(term)) => {
+            println!(" : {}", term);
+            evaluate(term, env);
+        }
     }
+}
 
-    
+fn add_binding(binding: Binding, symbols: &mut impl SymbolTable) {
+    //TODO: prevent recursive binding
+    symbols.insert(binding);
+}
 
-    let mut term = match term.unwrap() {
-        Statement::Expression(t) => t,
-        _ => return,
-    };
+fn evaluate(mut term: Term, symbols: &impl SymbolTable) {
+    term = term.bind_free_from(symbols);
+ 
     let mut seen_terms = HashSet::new();
     loop {
         if seen_terms.len() > MAX_REDUCTIONS {
