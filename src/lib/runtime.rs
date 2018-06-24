@@ -4,8 +4,8 @@ use std::collections::HashMap;
 
 #[derive(Debug, PartialEq)]
 pub struct Binding {
-    identifier: String,
-    value: Term,
+    pub identifier: String,
+    pub value: Term,
 }
 
 impl Binding {
@@ -14,6 +14,11 @@ impl Binding {
             identifier: identifier.into(),
             value,
         }
+    }
+
+    pub fn map_term<F: FnOnce(Term) -> Term>(mut self, f: F) -> Binding  {
+        self.value = f(self.value);
+        self
     }
 }
 

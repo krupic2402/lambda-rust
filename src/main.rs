@@ -77,7 +77,13 @@ fn interpret<S: AsRef<str>>(input: S, env: &mut impl SymbolTable) {
 }
 
 fn add_binding(binding: Binding, symbols: &mut impl SymbolTable) {
-    //TODO: prevent recursive binding
+    let binding = binding.map_term(|t| t.bind_free_from(symbols));
+    // if, after binding predefined values, the term still references
+    // the name it is being bound to, reject
+    if binding.value.is_free_in(&binding.identifier) {
+        println!("Error: recursive binding");
+        return;
+    }
     symbols.insert(binding);
 }
 

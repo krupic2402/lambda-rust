@@ -143,6 +143,23 @@ impl Term {
         }
     }
 
+    //TODO: test
+    pub fn is_free_in(&self, variable: &String) -> bool {
+        match *self {
+            Term::Variable {
+                name: Name::Free {
+                    name: ref identifier
+                }
+            } => identifier == variable,
+            Term::Variable { .. } => false,
+            Term::Lambda { ref body } => body.is_free_in(variable),
+            Term::Application {
+                ref applicand,
+                ref argument,
+            } => applicand.is_free_in(variable) || argument.is_free_in(variable),
+        }
+    }
+
     pub fn bind_free_from(self, symbols: &impl SymbolTable) -> Term {
         match self {
             Term::Variable {
