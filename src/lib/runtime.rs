@@ -17,12 +17,30 @@ impl Binding {
     }
 }
 
-#[derive(Debug)]
-pub struct SymbolTable(HashMap<String, Term>);
+pub trait SymbolTable {
+    fn insert(&mut self, binding: Binding);
+    fn get(&self, identifier: &String) -> Option<&Term>;
+}
 
-impl SymbolTable {
-    pub fn insert(&mut self, binding: Binding) {
-        self.0.insert(binding.identifier, binding.value);
+pub type Environment = HashMap<String, Term>;
+
+impl SymbolTable for Environment {
+    fn insert(&mut self, binding: Binding) {
+        self.insert(binding.identifier, binding.value);
+    }
+
+    fn get(&self, identifier: &String) -> Option<&Term> {
+        self.get(identifier)
+    }
+}
+
+impl SymbolTable for () {
+    #[allow(unused_variables)]
+    fn insert(&mut self, binding: Binding) {}
+
+    #[allow(unused_variables)]
+    fn get(&self, identifier: &String) -> Option<&Term> {
+        None
     }
 }
 

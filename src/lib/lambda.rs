@@ -1,3 +1,5 @@
+use ::runtime::SymbolTable;
+
 use std::fmt;
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
@@ -137,6 +139,29 @@ impl Term {
             }
             Term::Lambda { body } => {
                 Term::lambda(body.substitute(depth + 1, deepen_by + 1, with))
+            }
+        }
+    }
+
+    pub fn bind_free_from(self, symbols: &impl SymbolTable) -> Term {
+        match self {
+            Term::Variable {
+                name: Name::Free {
+                    name: identifier
+                }
+            } => {
+                symbols.get(&identifier).cloned()
+                    .unwrap_or_else(|| Term::variable(Name::free(identifier)))
+            }
+            v @ Term::Variable { .. } => v,
+            Term::Lambda { body } => {
+                Term::lambda(body.bind_free_from(symbols))
+            }
+            Term::Application { applicand, argument } => {
+                Term::apply(
+                    applicand.bind_free_from(symbols),
+                    argument.bind_free_from(symbols),
+                )
             }
         }
     }
@@ -306,6 +331,46 @@ mod test {
                 ))
             ),
             result
+        );
+    }
+
+    #[test]
+    fn test_bind_free_dummy() {
+        let lambda = Term::lambda(Term::variable(Name::free("a".into())));
+
+        assert_eq!(
+            lambda.clone(),
+            lambda.bind_free_from(&()),
+        );
+    }
+
+    #[test]
+    fn test_bind_free_real() {
+        use ::runtime::{Binding, Environment, SymbolTable};
+
+        let lambda = Term::lambda(Term::variable(Name::free("a".into())));
+        let symbols = {
+            let mut map: Environment = Environment::new();
+            SymbolTable::insert(
+                &mut map,
+                Binding::new(
+                    "a",
+                    Term::lambda(Term::variable(Name::bound(1))),
+                ),
+            );
+            SymbolTable::insert(
+                &mut map,
+                Binding::new(
+                    "b",
+                    Term::variable(Name::free("x".into())),
+                ),
+            );
+            map
+        };
+
+        assert_eq!(
+            Term::lambda(Term::lambda(Term::variable(Name::bound(1)))),
+            lambda.bind_free_from(&symbols),
         );
     }
 }
