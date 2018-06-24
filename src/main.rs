@@ -50,7 +50,7 @@ fn main() {
     }
 }
 
-const MAX_REDUCTIONS: usize = 1000;
+const MAX_REDUCTIONS: usize = 5000;
 
 fn interpret<S: AsRef<str>>(input: S, env: &mut impl SymbolTable) {
     let tokens = Token::parse_all(input.as_ref());
