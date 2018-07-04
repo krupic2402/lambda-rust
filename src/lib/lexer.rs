@@ -8,7 +8,8 @@ pub enum Token {
     Dot,
     Identifier(String),
     Let,
-    Define,
+    DefineReduce,
+    DefineSuspend,
 }
 
 impl fmt::Display for Token {
@@ -22,7 +23,8 @@ impl fmt::Display for Token {
             Dot => write!(f, "."),
             Identifier(ref name) => write!(f, "{}", name),
             Let => write!(f, "let"),
-            Define => write!(f, "="),
+            DefineReduce => write!(f, "="),
+            DefineSuspend => write!(f, ":="),
         }
     }
 }
@@ -44,7 +46,13 @@ impl Token {
                 ')' => tokens.push(ParenClose),
                 'λ' | 'L' => tokens.push(Lambda),
                 '.' => tokens.push(Dot),
-                '=' => tokens.push(Define),
+                '=' => tokens.push(DefineReduce),
+                ':' => {
+                    match iterator.next() {
+                        Some('=') => tokens.push(DefineSuspend),
+                        _ => return Err(ParseTokenError(format!("Invalid token: :{}", c))),
+                    }
+                },
                 c if c.is_ascii_alphanumeric()  => {
                     let mut word: String = String::new();
                     word.push(c);
@@ -83,7 +91,7 @@ mod test {
         
     #[test]
     fn test_parse_tokens_invalid() {
-         assert_eq!(
+        assert_eq!(
             Err(ParseTokenError("Invalid token: [".into())),
             Token::parse_all("[Lx.x]"),
         );
@@ -91,7 +99,7 @@ mod test {
 
     #[test]
     fn test_parse_tokens_empty() {
-         assert_eq!(
+        assert_eq!(
             Ok(vec![]),
             Token::parse_all(" "),
         );
@@ -99,10 +107,30 @@ mod test {
 
     #[test]
     fn test_parse_tokens_let_statement() {
-         assert_eq!(
-            Ok(vec![Let, Identifier("I".into()), Define,
+        assert_eq!(
+            Ok(vec![Let, Identifier("I".into()), DefineReduce,
                 ParenOpen, Lambda, Identifier("x".into()), Dot, Identifier("x".into()), ParenClose]),
             Token::parse_all("let I = (Lx.x)"),
         );
+
+        assert_eq!(
+            Ok(vec![Let, Identifier("I".into()), DefineSuspend,
+                ParenOpen, Lambda, Identifier("x".into()), Dot, Identifier("x".into()), ParenClose]),
+            Token::parse_all("let I := (Lx.x)"),
+        );
+    }
+
+    #[test]
+    fn test_parse_back_displayed() {
+        let tokens = vec![
+            ParenOpen, ParenClose, Lambda, Dot, Let, DefineReduce, DefineSuspend, Identifier("x".into())
+        ];
+
+        let text = tokens.iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(" ");
+
+        assert_eq!(Ok(tokens), Token::parse_all(&text));
     }
 }

@@ -109,7 +109,7 @@ fn parse_let_statement<'a, 'b>(tokens: &'a[Token], state: ParseState<'b>) -> Par
 
     let (_, tokens) = expect_token!(Let, tokens, state);
     let (name, tokens) = expect_token!(Identifier(name) => name.clone(), tokens, state);
-    let (_, tokens) = expect_token!(Define, tokens, state);
+    let (_, tokens) = expect_token!(DefineReduce, tokens, state);
 
     let (term, tokens, state) = parse_expression(tokens, state)?;
     Ok((Binding::new(name, term), tokens, state))
