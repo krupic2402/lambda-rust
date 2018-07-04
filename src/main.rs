@@ -77,24 +77,37 @@ fn interpret<S: AsRef<str>>(input: S, env: &mut impl SymbolTable) {
 }
 
 fn add_binding(binding: Binding, symbols: &mut impl SymbolTable) {
-    let binding = binding.map_term(|t| t.bind_free_from(symbols));
+    let mut binding = binding.map_term(|t| t.bind_free_from(symbols));
     // if, after binding predefined values, the term still references
     // the name it is being bound to, reject
     if binding.value.is_free_in(&binding.identifier) {
         println!("Error: recursive binding");
         return;
     }
-    symbols.insert(binding);
+
+    match binding.mode {
+        BindMode::CaptureOnly => symbols.insert(binding),
+        BindMode::CaptureAndReduce => {
+            match evaluate(binding.value, &()) {
+                Some(term) => {
+                    binding.value = term;
+                    symbols.insert(binding);
+                }
+                None => println!("Error reducing term"),
+            }
+        }
+    }
+
 }
 
-fn evaluate(mut term: Term, symbols: &impl SymbolTable) {
+fn evaluate(mut term: Term, symbols: &impl SymbolTable) -> Option<Term> {
     term = term.bind_free_from(symbols);
  
     let mut seen_terms = HashSet::new();
     loop {
         if seen_terms.len() > MAX_REDUCTIONS {
             println!("[too many reductions]");
-            return;
+            return None;
         }
 
         let reduct = term.reduce(Strategy::NormalOrder);
@@ -102,7 +115,7 @@ fn evaluate(mut term: Term, symbols: &impl SymbolTable) {
         match reduct {
             EvalResult::NormalForm(r) => {
                 println!("{} [normal]", r);
-                break;
+                return Some(r);
             }
             EvalResult::PossiblyReducible(r) => {
                 if !seen_terms.contains(&r) {
@@ -111,7 +124,7 @@ fn evaluate(mut term: Term, symbols: &impl SymbolTable) {
                     seen_terms.insert(term.clone());
                 } else {
                     println!("[non-terminating]");
-                    break;
+                    return None;
                 }
             }
         }
