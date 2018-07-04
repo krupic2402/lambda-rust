@@ -2,17 +2,25 @@ use ::lambda::Term;
 
 use std::collections::HashMap;
 
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum BindMode {
+    CaptureAndReduce,
+    CaptureOnly,
+}
+
 #[derive(Debug, PartialEq)]
 pub struct Binding {
     pub identifier: String,
     pub value: Term,
+    pub mode: BindMode,
 }
 
 impl Binding {
-    pub fn new<S: Into<String>>(identifier: S, value: Term) -> Binding {
+    pub fn new<S: Into<String>>(identifier: S, value: Term, mode: BindMode) -> Binding {
         Binding {
             identifier: identifier.into(),
             value,
+            mode,
         }
     }
 

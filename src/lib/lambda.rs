@@ -363,7 +363,7 @@ mod test {
 
     #[test]
     fn test_bind_free_real() {
-        use ::runtime::{Binding, Environment, SymbolTable};
+        use ::runtime::{Binding, BindMode, Environment, SymbolTable};
 
         let lambda = Term::lambda(Term::variable(Name::free("a".into())));
         let symbols = {
@@ -373,6 +373,7 @@ mod test {
                 Binding::new(
                     "a",
                     Term::lambda(Term::variable(Name::bound(1))),
+                    BindMode::CaptureOnly,
                 ),
             );
             SymbolTable::insert(
@@ -380,6 +381,7 @@ mod test {
                 Binding::new(
                     "b",
                     Term::variable(Name::free("x".into())),
+                    BindMode::CaptureOnly,
                 ),
             );
             map

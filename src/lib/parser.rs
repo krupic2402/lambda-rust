@@ -1,6 +1,6 @@
 use ::lexer::Token;
 use ::lambda::{Term, Name};
-use ::runtime::{Binding, Statement};
+use ::runtime::{Binding, BindMode, Statement};
 
 use std::collections::HashMap;
 use std::fmt;
@@ -8,7 +8,7 @@ use std::string::ToString;
 
 #[derive(Debug, PartialEq)]
 pub enum ParseError<'a> {
-    ExpectedToken(&'static str, &'a Token),
+    ExpectedToken(Vec<&'static str>, &'a Token),
     EmptyExpression,
     NotStartOfExpression(&'a Token),
     EOF(Vec<&'static str>),
@@ -21,8 +21,8 @@ impl<'a> fmt::Display for ParseError<'a> {
         use self::ParseError::*;
 
         match *self {
-            ExpectedToken(ref pattern, ref got_token) => {
-                write!(f, "Expected {} but got token '{}'", pattern, got_token)
+            ExpectedToken(ref patterns, ref got_token) => {
+                write!(f, "Expected any of: {} but got token '{}'", patterns.join(", "), got_token)
             }
             EmptyExpression => write!(f, "Empty subexpression"),
             NotStartOfExpression(ref got_token) => {
@@ -64,13 +64,26 @@ struct ParseState<'a> {
 }
 
 macro_rules! expect_token {
-    ($token:pat => $expr:expr, $tokens:expr, $state:expr) => {{
+    (($tokens:expr, $state:expr) { $($token:pat => $found:expr),* }) => {{
         match $tokens.split_first() {
+            $(
             Some(($token, rest)) => {
-                ($expr, rest)
+                ($found, rest)
             }
-            None => return Err((ParseError::EOF(vec![stringify!($token)]), $state)),
-            _ => return Err((ParseError::ExpectedToken(stringify!($token), $tokens.first().unwrap()), $state)),
+            ),*
+            None => return Err((ParseError::EOF(vec![$( stringify!($token) ),*]), $state)),
+            _ => return Err((ParseError::ExpectedToken(
+                vec![$( stringify!($token) ),*],
+                $tokens.first().unwrap()),
+                $state,
+            )),
+        }
+    }};
+    ($token:pat => $expr:expr, $tokens:expr, $state:expr) => {{
+        expect_token! {
+            ($tokens, $state) {
+                $token => $expr
+            }
         }
     }};
     ($token:pat, $tokens:expr, $state:expr) => {{
@@ -109,10 +122,15 @@ fn parse_let_statement<'a, 'b>(tokens: &'a[Token], state: ParseState<'b>) -> Par
 
     let (_, tokens) = expect_token!(Let, tokens, state);
     let (name, tokens) = expect_token!(Identifier(name) => name.clone(), tokens, state);
-    let (_, tokens) = expect_token!(DefineReduce, tokens, state);
+    let (mode, tokens) = expect_token! {
+        (tokens, state) {
+            DefineReduce => BindMode::CaptureAndReduce,
+            DefineSuspend => BindMode::CaptureOnly
+        }
+    };
 
     let (term, tokens, state) = parse_expression(tokens, state)?;
-    Ok((Binding::new(name, term), tokens, state))
+    Ok((Binding::new(name, term, mode), tokens, state))
 }
 
 fn parse_expression<'a, 'b>(tokens: &'a[Token], state: ParseState<'b>) -> ParseResult<'a, 'b, Term> {
@@ -246,7 +264,7 @@ mod test {
     }
 
     #[test]
-    fn test_parse_let_statement() {
+    fn test_parse_let_statement_reducing() {
         let lambda = "let I = (Lx.x)";
         let tokens = Token::parse_all(lambda).unwrap();
 
@@ -254,6 +272,22 @@ mod test {
             Ok(Statement::LetStatement(Binding::new(
                     "I",
                     Term::lambda(Term::variable(Name::bound(1))),
+                    BindMode::CaptureAndReduce,
+            ))),
+            parse(&tokens),
+        );
+    }
+
+    #[test]
+    fn test_parse_let_statement_capturing() {
+        let lambda = "let I := (Lx.x)";
+        let tokens = Token::parse_all(lambda).unwrap();
+
+        assert_eq!(
+            Ok(Statement::LetStatement(Binding::new(
+                    "I",
+                    Term::lambda(Term::variable(Name::bound(1))),
+                    BindMode::CaptureOnly,
             ))),
             parse(&tokens),
         );
