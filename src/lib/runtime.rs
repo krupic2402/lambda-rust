@@ -71,6 +71,7 @@ pub struct Environment<T: SymbolTable = HashSymbolTable> {
 
 impl<T: SymbolTable> Environment<T> {
     const MAX_REDUCTIONS_DEFAULT: usize = 5000;
+    const ANS: &'static str = "ans";
 
     pub fn new() -> Environment<T> where T: Default {
         Environment {
@@ -148,7 +149,8 @@ impl<T: SymbolTable> Environment<T> {
             }
             Ok(Statement::Expression(term)) => {
                 println!(" : {}", term);
-                self.evaluate(term)?;
+                let ans = Binding::new(Self::ANS, term, BindMode::CaptureAndReduce);
+                self.add_binding(ans)?;
             }
         }
 
