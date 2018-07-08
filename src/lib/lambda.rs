@@ -363,11 +363,12 @@ mod test {
 
     #[test]
     fn test_bind_free_real() {
-        use ::runtime::{Binding, BindMode, Environment, SymbolTable};
+        use std::collections::HashMap;
+        use ::runtime::{Binding, BindMode, SymbolTable};
 
         let lambda = Term::lambda(Term::variable(Name::free("a".into())));
         let symbols = {
-            let mut map: Environment = Environment::new();
+            let mut map: HashMap<String, Term> = HashMap::new();
             SymbolTable::insert(
                 &mut map,
                 Binding::new(

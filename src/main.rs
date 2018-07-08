@@ -1,19 +1,13 @@
 extern crate lambda_rust;
 extern crate rustyline;
 
-use lambda_rust::{
-    lexer::Token,
-    parser::parse,
-    runtime::*,
-};
-
+use lambda_rust::runtime::*;
 use rustyline::error::ReadlineError;
-
 use std::process;
 
 fn main() {
     let mut editor = rustyline::Editor::<()>::new();
-    let mut runtime = Environment::new();
+    let mut runtime: Environment<HashSymbolTable> = Environment::new();
 
     loop {
         let input = match editor.readline("> ") {
@@ -44,31 +38,7 @@ fn main() {
             continue;
         }
 
-        interpret(input, &mut runtime);
-    }
-}
-
-fn interpret<S: AsRef<str>>(input: S, env: &mut impl SymbolTable) {
-    let tokens = Token::parse_all(input.as_ref());
-    if let Err(ref e) = tokens {
-        println!("{}", e.0);
-        return;
-    }
-
-    let tokens = tokens.unwrap();
-    let statement = parse(&tokens);
-    match statement {
-        Err(ref e) => {
-            println!("{}", e);
-            return;
-        }
-        Ok(Statement::LetStatement(binding)) => {
-            add_binding(binding, env);
-        }
-        Ok(Statement::Expression(term)) => {
-            println!(" : {}", term);
-            evaluate(term, env);
-        }
+        runtime.interpret(input);
     }
 }
 
