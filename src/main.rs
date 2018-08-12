@@ -38,7 +38,7 @@ fn main() {
             continue;
         }
 
-        runtime.interpret(input);
+        let _ = runtime.interpret(input);
     }
 }
 

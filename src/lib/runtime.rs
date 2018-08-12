@@ -28,7 +28,7 @@ impl Binding {
 
 pub trait SymbolTable {
     fn insert(&mut self, binding: Binding);
-    fn get(&self, identifier: &String) -> Option<&Term>;
+    fn get(&self, identifier: &str) -> Option<&Term>;
 }
 
 pub type HashSymbolTable = HashMap<String, Term>;
@@ -38,7 +38,7 @@ impl SymbolTable for HashSymbolTable {
         self.insert(binding.identifier, binding.value);
     }
 
-    fn get(&self, identifier: &String) -> Option<&Term> {
+    fn get(&self, identifier: &str) -> Option<&Term> {
         self.get(identifier)
     }
 }
@@ -48,7 +48,7 @@ impl SymbolTable for () {
     fn insert(&mut self, binding: Binding) {}
 
     #[allow(unused_variables)]
-    fn get(&self, identifier: &String) -> Option<&Term> {
+    fn get(&self, identifier: &str) -> Option<&Term> {
         None
     }
 }
@@ -69,6 +69,7 @@ pub struct Environment<T: SymbolTable = HashSymbolTable> {
     max_reductions: usize,
 }
 
+#[allow(new_without_default)]
 impl<T: SymbolTable> Environment<T> {
     const MAX_REDUCTIONS_DEFAULT: usize = 5000;
     const ANS: &'static str = "ans";
@@ -96,7 +97,7 @@ impl<T: SymbolTable> Environment<T> {
         }
 
         self.symbols.insert(binding);
-        return Ok(());
+        Ok(())
     }
 
     fn evaluate(&self, mut term: Term) -> EvaluationResult<Term> {
@@ -155,6 +156,12 @@ impl<T: SymbolTable> Environment<T> {
         }
 
         Ok(())
+    }
+}
+
+impl<T: SymbolTable + Default> Default for Environment<T> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

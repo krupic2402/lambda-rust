@@ -144,7 +144,7 @@ impl Term {
     }
 
     //TODO: test
-    pub fn is_free_in(&self, variable: &String) -> bool {
+    pub fn is_free_in(&self, variable: &str) -> bool {
         match *self {
             Term::Variable {
                 name: Name::Free {
