@@ -3,18 +3,29 @@ extern crate rustyline;
 extern crate isatty;
 
 use lambda_rust::runtime::*;
-use rustyline::error::ReadlineError;
+use rustyline::{error::ReadlineError, config::{Config, CompletionType}};
 use isatty::*;
 use std::process;
 
+mod commands;
+use commands::{Command, Commands};
+
 fn main() {
-    let mut editor = rustyline::Editor::<()>::new();
+    let commands = Commands::new()
+                        .add(Command("quit"))
+                        .add(Command("exit"))
+                        .done();
+
+    let mut editor = rustyline::Editor::<&Commands>::with_config(
+        Config::builder().completion_type(CompletionType::List).build());
+    editor.set_completer(Some(&commands));
+
     let mut runtime: Environment<HashSymbolTable> = Environment::new();
 
     loop {
         let input = match editor.readline("> ") {
             Ok(line) => {
-                editor.add_history_entry(&line);
+                editor.add_history_entry(line.clone());
                 line
             }
             Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => {
@@ -29,12 +40,13 @@ fn main() {
         let input = input.trim();
         if input.is_empty() { continue; }
 
-        if input.starts_with(':') {
-            let command = &input[1..];
-            if command.is_empty() { continue; }
-
-            if "quit".starts_with(command) {
-                exit();
+        if input.starts_with(commands::COMMAND_PREFIX) {
+            match commands.parse(input) {
+                Err(e) => println!("{}", e),
+                Ok(c) => match c.command {
+                    "quit" | "exit" => exit(),
+                    _ => unreachable!(),
+                }
             }
 
             continue;
