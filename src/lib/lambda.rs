@@ -144,7 +144,7 @@ impl Term {
     }
 
     //TODO: test
-    pub fn is_free_in(&self, variable: &String) -> bool {
+    pub fn is_free_in(&self, variable: &str) -> bool {
         match *self {
             Term::Variable {
                 name: Name::Free {
@@ -363,16 +363,18 @@ mod test {
 
     #[test]
     fn test_bind_free_real() {
-        use ::runtime::{Binding, Environment, SymbolTable};
+        use std::collections::HashMap;
+        use ::runtime::{Binding, BindMode, SymbolTable};
 
         let lambda = Term::lambda(Term::variable(Name::free("a".into())));
         let symbols = {
-            let mut map: Environment = Environment::new();
+            let mut map: HashMap<String, Term> = HashMap::new();
             SymbolTable::insert(
                 &mut map,
                 Binding::new(
                     "a",
                     Term::lambda(Term::variable(Name::bound(1))),
+                    BindMode::CaptureOnly,
                 ),
             );
             SymbolTable::insert(
@@ -380,6 +382,7 @@ mod test {
                 Binding::new(
                     "b",
                     Term::variable(Name::free("x".into())),
+                    BindMode::CaptureOnly,
                 ),
             );
             map
