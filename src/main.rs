@@ -1,8 +1,10 @@
 extern crate lambda_rust;
 extern crate rustyline;
+extern crate isatty;
 
 use lambda_rust::runtime::*;
 use rustyline::error::ReadlineError;
+use isatty::*;
 use std::process;
 
 fn main() {
@@ -15,7 +17,7 @@ fn main() {
                 editor.add_history_entry(&line);
                 line
             }
-            Err(ReadlineError::Interrupted) => {
+            Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => {
                 exit();
             }
             e @ Err(_) => {
@@ -43,6 +45,8 @@ fn main() {
 }
 
 fn exit() -> ! {
-    println!("Exiting ...");
+    if stdin_isatty() {
+        println!("Exiting ...");
+    }
     process::exit(0);
 }

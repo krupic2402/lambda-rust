@@ -5,6 +5,7 @@ authors = ["Kristijan Rupić <krupic.2.0@gmail.com>"]
 
 [dependencies]
 rustyline = "1.0.0"
+isatty = "0.1.8"
 
 [lib]
 name = "lambda_rust"
