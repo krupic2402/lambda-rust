@@ -81,6 +81,10 @@ impl<T: SymbolTable> Environment<T> {
         }
     }
 
+    pub fn symbol_table(&self) -> &impl SymbolTable {
+        &self.symbols
+    }
+
     fn add_binding(&mut self, mut binding: Binding) -> EvaluationResult<()> {
         // always capture free variables from environment
         binding.value = binding.value.bind_free_from(&self.symbols);

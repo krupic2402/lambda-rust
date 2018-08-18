@@ -14,6 +14,7 @@ fn main() {
     let commands = Commands::new()
                         .add(Command("quit"))
                         .add(Command("exit"))
+                        .add(Command("show"))
                         .done();
 
     let mut editor = rustyline::Editor::<&Commands>::with_config(
@@ -45,6 +46,14 @@ fn main() {
                 Err(e) => println!("{}", e),
                 Ok(c) => match c.command {
                     "quit" | "exit" => exit(),
+                    "show" => {
+                        for identifier in c.args {
+                            match runtime.symbol_table().get(identifier) {
+                                Some(term) => println!("{} = {}", identifier, term),
+                                None => println!("Undefined identifier \"{}\"", identifier),
+                            }
+                        }
+                    }
                     _ => unreachable!(),
                 }
             }
