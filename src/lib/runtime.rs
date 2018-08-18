@@ -2,6 +2,7 @@ use ::lambda::{self, Term, Strategy};
 use ::lexer::Token;
 use ::parser::parse;
 use std::collections::{HashMap, HashSet};
+use std::iter;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum BindMode {
@@ -29,6 +30,8 @@ impl Binding {
 pub trait SymbolTable {
     fn insert(&mut self, binding: Binding);
     fn get(&self, identifier: &str) -> Option<&Term>;
+    fn symbols<'a>(&'a self) -> Box<dyn Iterator<Item = &'a String> + 'a>;
+    fn bindings<'a>(&'a self) -> Box<dyn Iterator<Item = (&'a String, &'a Term)> + 'a>;
 }
 
 pub type HashSymbolTable = HashMap<String, Term>;
@@ -41,6 +44,14 @@ impl SymbolTable for HashSymbolTable {
     fn get(&self, identifier: &str) -> Option<&Term> {
         self.get(identifier)
     }
+
+    fn symbols<'a>(&'a self) -> Box<dyn Iterator<Item = &'a String> + 'a> {
+        Box::new(self.keys())
+    }
+
+    fn bindings<'a>(&'a self) -> Box<dyn Iterator<Item = (&'a String, &'a Term)> + 'a> {
+        Box::new(self.iter())
+    }
 }
 
 impl SymbolTable for () {
@@ -50,6 +61,14 @@ impl SymbolTable for () {
     #[allow(unused_variables)]
     fn get(&self, identifier: &str) -> Option<&Term> {
         None
+    }
+
+    fn symbols(&self) -> Box<dyn Iterator<Item = &String>> {
+        Box::new(iter::empty())
+    }
+
+    fn bindings(&self) -> Box<dyn Iterator<Item = (&String, &Term)>> {
+        Box::new(iter::empty())
     }
 }
 

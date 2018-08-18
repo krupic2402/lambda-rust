@@ -15,6 +15,7 @@ fn main() {
                         .add(Command("quit"))
                         .add(Command("exit"))
                         .add(Command("show"))
+                        .add(Command("list"))
                         .done();
 
     let mut editor = rustyline::Editor::<&Commands>::with_config(
@@ -52,6 +53,13 @@ fn main() {
                                 Some(term) => println!("{} = {}", identifier, term),
                                 None => println!("Undefined identifier \"{}\"", identifier),
                             }
+                        }
+                    }
+                    "list" => {
+                        let mut bindings: Vec<_> = runtime.symbol_table().bindings().collect();
+                        bindings.sort_unstable_by_key(|b| b.0);
+                        for (name, term) in bindings {
+                            println!("{} = {}", name, term);
                         }
                     }
                     _ => unreachable!(),
