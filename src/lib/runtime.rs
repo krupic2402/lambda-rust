@@ -69,7 +69,7 @@ pub struct Environment<T: SymbolTable = HashSymbolTable> {
     max_reductions: usize,
 }
 
-#[allow(new_without_default)]
+#[allow(unknown_lints,new_without_default)]
 impl<T: SymbolTable> Environment<T> {
     const MAX_REDUCTIONS_DEFAULT: usize = 5000;
     const ANS: &'static str = "ans";

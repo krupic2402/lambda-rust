@@ -26,7 +26,7 @@ impl<'names> Builder<'names> {
     }
 }
 
-pub const COMMAND_PREFIX: &'static str = ":";
+pub const COMMAND_PREFIX: &str = ":";
 
 #[derive(Debug, PartialEq)]
 pub struct InvalidCommand<'line>(&'line str);
@@ -46,7 +46,7 @@ pub struct CommandCall<'line> {
 impl<'line> Display for CommandCall<'line> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "{}{}", COMMAND_PREFIX, self.command)?;
-        for arg in self.args.iter() {
+        for arg in &self.args {
             write!(f, " {}", arg)?;
         }
         Ok(())
@@ -62,7 +62,7 @@ impl<'names> Commands<'names> {
         self.commands.iter().filter(|c| c.0.starts_with(command)).collect()
     }
 
-    fn tokenize<'line>(line: &'line str) -> Option<(&'line str, usize, SplitWhitespace<'line>)> {
+    fn tokenize(line: &str) -> Option<(&str, usize, SplitWhitespace)> {
         let start = line.find(COMMAND_PREFIX);
         if start.is_none() {
             return None; 
