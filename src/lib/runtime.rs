@@ -77,6 +77,7 @@ pub enum EvaluationError {
     TooManyReductions,
     NonTerminating,
     RecursiveBinding,
+    ParseError,
 }
 
 use self::EvaluationError::*;
@@ -158,7 +159,7 @@ impl<T: SymbolTable> Environment<T> {
         let tokens = Token::parse_all(input.as_ref());
         if let Err(ref e) = tokens {
             println!("{}", e.0);
-            return Ok(());
+            return Err(ParseError);
         }
 
         let tokens = tokens.unwrap();

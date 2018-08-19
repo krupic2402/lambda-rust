@@ -1,26 +1,45 @@
 extern crate rustyline;
 
-use rustyline::completion::Completer;
+use rustyline::completion::{FilenameCompleter, Completer};
 use std::str::SplitWhitespace;
 use std::fmt::{self, Display, Formatter};
+
+#[derive(Debug, PartialEq, Copy, Clone)]
+pub enum ArgType {
+    Symbol,
+    File,
+    Boolean,
+    Number,
+}
+
+impl ArgType {
+    fn get_completer(self) -> Box<dyn Completer> {
+        if self == ArgType::File {
+            Box::new(FilenameCompleter::default())
+        } else {
+            Box::new(())
+        }
+    }
+}
 
 #[derive(Debug, PartialEq)]
 pub struct Command<'name> {
     pub name: &'name str,
     pub arity: Option<usize>,
+    pub arg: Option<ArgType>,
 }
 
 impl<'name> Command<'name> {
-    pub fn new(name: &str) -> Command {
-        Command { name, arity: None }
+    pub fn new(name: &str, arg: ArgType) -> Command {
+        Command { name, arity: None, arg: Some(arg) }
     }
 
-    pub fn with_arity(name: &str, arity: usize) -> Command {
-        Command { name, arity: Some(arity) }
+    pub fn with_arity(name: &str, arg: ArgType, arity: usize) -> Command {
+        Command { name, arity: Some(arity), arg: Some(arg) }
     }
 
     pub fn nullary(name: &str) -> Command {
-        Command::with_arity(name, 0)
+        Command { name, arity: Some(0), arg: None }
     }
 }
 
@@ -126,13 +145,25 @@ impl<'commands> Commands<'commands> {
 }
 
 impl<'commands> Completer for Commands<'commands> {
-    fn complete(&self, line: &str, _pos: usize) -> rustyline::Result<(usize, Vec<String>)> {
-        let (command, position) = match Commands::tokenize(line) {
+    fn complete(&self, line: &str, pos: usize) -> rustyline::Result<(usize, Vec<String>)> {
+        let (command_prefix, position) = match Commands::tokenize(line) {
             Some((command_prefix, start, _)) => (command_prefix, start),
             None => return Ok((0, vec![])),
         };
 
-        Ok((position, self.match_str(command).into_iter().map(|c| c.name.into()).collect()))
+        let command_candidates = self.match_str(command_prefix);
+        if command_candidates.len() == 1 {
+            let command = command_candidates[0];
+            if command_prefix.len() != command.name.len() {
+                return Ok((position, vec![command.name.into()]))
+            }
+
+            let completer = command.arg.map(ArgType::get_completer).unwrap_or(Box::new(()));
+            return completer.complete(line, pos);
+        } else {
+            let command_names = command_candidates.into_iter().map(|c| c.name.into()).collect();
+            Ok((position, command_names))
+        }
     }
 }
 
@@ -143,22 +174,22 @@ mod test {
     #[test]
     fn test_matching() {
         let commands = Commands::new()
-                            .add(Command::new("abc"))
-                            .add(Command::new("def"))
-                            .add(Command::new("ddd"))
+                            .add(Command::nullary("abc"))
+                            .add(Command::nullary("def"))
+                            .add(Command::nullary("ddd"))
                             .done();
-        assert_eq!(vec![&Command::new("abc")], commands.match_str("a"));
-        assert_eq!(vec![&Command::new("def"), &Command::new("ddd")], commands.match_str("d"));
+        assert_eq!(vec![&Command::nullary("abc")], commands.match_str("a"));
+        assert_eq!(vec![&Command::nullary("def"), &Command::nullary("ddd")], commands.match_str("d"));
         assert_eq!(Vec::<&Command>::new(), commands.match_str("ad"));
-        assert_eq!(vec![&Command::new("abc"), &Command::new("def"), &Command::new("ddd")], commands.match_str(""));
+        assert_eq!(vec![&Command::nullary("abc"), &Command::nullary("def"), &Command::nullary("ddd")], commands.match_str(""));
     }
 
     #[test]
     fn test_completion() {
         let commands = Commands::new()
-                            .add(Command::new("foo"))
-                            .add(Command::new("fizz"))
-                            .add(Command::new("bar"))
+                            .add(Command::nullary("foo"))
+                            .add(Command::nullary("fizz"))
+                            .add(Command::nullary("bar"))
                             .done();
 
         assert_eq!(
@@ -180,7 +211,7 @@ mod test {
     #[test]
     fn test_parsing() {
         let commands = Commands::new()
-                            .add(Command::new("foo"))
+                            .add(Command::with_arity("foo", ArgType::Number, 2))
                             .done();
 
         {
@@ -191,7 +222,7 @@ mod test {
         {
             let text = " : foo 1 2";
             assert_eq!(
-                Ok(CommandCall { command: &Command::new("foo"), args: vec!["1", "2"] }),
+                Ok(CommandCall { command: &Command::with_arity("foo", ArgType::Number, 2), args: vec!["1", "2"] }),
                 commands.parse(text),
             );
         }

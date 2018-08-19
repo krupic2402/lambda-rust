@@ -10,7 +10,7 @@ use std::fs::File;
 use std::io::{BufReader, BufRead};
 
 mod commands;
-use commands::{Command, Commands};
+use commands::{Command, Commands, ArgType};
 
 const QUIT: &str = "quit";
 const EXIT: &str = "exit";
@@ -22,9 +22,9 @@ fn main() {
     let commands = Commands::new()
                         .add(Command::nullary(QUIT))
                         .add(Command::nullary(EXIT))
-                        .add(Command::new(SHOW))
+                        .add(Command::new(SHOW, ArgType::Symbol))
                         .add(Command::nullary(LIST))
-                        .add(Command::with_arity(IMPORT, 1))
+                        .add(Command::with_arity(IMPORT, ArgType::File, 1))
                         .done();
 
     let mut editor = rustyline::Editor::<&Commands>::with_config(
@@ -77,9 +77,12 @@ fn main() {
                             Err(e) => println!("Error opening {}: {}", filename, e),
                             Ok(file) => {
                                 let mut reader = BufReader::new(&file);
-                                for line in reader.lines() {
+                                for (line_number, line) in reader.lines().enumerate() {
                                     match runtime.interpret(&line.unwrap()) {
-                                        Err(_) => break,
+                                        Err(_) => {
+                                            println!("Error in line {}.", line_number + 1);
+                                            break;
+                                        }
                                         Ok(_) => continue,
                                     }
                                 }
