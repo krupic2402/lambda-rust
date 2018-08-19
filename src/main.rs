@@ -6,16 +6,25 @@ use lambda_rust::runtime::*;
 use rustyline::{error::ReadlineError, config::{Config, CompletionType}};
 use isatty::*;
 use std::process;
+use std::fs::File;
+use std::io::{BufReader, BufRead};
 
 mod commands;
 use commands::{Command, Commands};
 
+const QUIT: &str = "quit";
+const EXIT: &str = "exit";
+const SHOW: &str = "show";
+const LIST: &str = "list";
+const IMPORT: &str = "import";
+
 fn main() {
     let commands = Commands::new()
-                        .add(Command::nullary("quit"))
-                        .add(Command::nullary("exit"))
-                        .add(Command::new("show"))
-                        .add(Command::nullary("list"))
+                        .add(Command::nullary(QUIT))
+                        .add(Command::nullary(EXIT))
+                        .add(Command::new(SHOW))
+                        .add(Command::nullary(LIST))
+                        .add(Command::with_arity(IMPORT, 1))
                         .done();
 
     let mut editor = rustyline::Editor::<&Commands>::with_config(
@@ -46,8 +55,8 @@ fn main() {
             match commands.parse(input) {
                 Err(e) => println!("{}", e),
                 Ok(c) => match c.command.name {
-                    "quit" | "exit" => exit(),
-                    "show" => {
+                    QUIT | EXIT => exit(),
+                    SHOW => {
                         for identifier in c.args {
                             match runtime.symbol_table().get(identifier) {
                                 Some(term) => println!("{} = {}", identifier, term),
@@ -55,11 +64,26 @@ fn main() {
                             }
                         }
                     }
-                    "list" => {
+                    LIST => {
                         let mut bindings: Vec<_> = runtime.symbol_table().bindings().collect();
                         bindings.sort_unstable_by_key(|b| b.0);
                         for (name, term) in bindings {
                             println!("{} = {}", name, term);
+                        }
+                    }
+                    IMPORT => {
+                        let filename = c.args[0];
+                        match File::open(filename) {
+                            Err(e) => println!("Error opening {}: {}", filename, e),
+                            Ok(file) => {
+                                let mut reader = BufReader::new(&file);
+                                for line in reader.lines() {
+                                    match runtime.interpret(&line.unwrap()) {
+                                        Err(_) => break,
+                                        Ok(_) => continue,
+                                    }
+                                }
+                            }
                         }
                     }
                     _ => unreachable!(),

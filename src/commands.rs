@@ -104,7 +104,14 @@ impl<'commands> Commands<'commands> {
                 if candidates.len() == 1 {
                     let command = candidates[0];
                     let args = match command.arity {
-                        Some(n) => args.take(n).collect(),
+                        Some(n) => {
+                            let args: Vec<_> = args.take(n).collect();
+                            if args.len() == n {
+                                args
+                            } else {
+                                return Err(InvalidCommand(line));
+                            }
+                        }
                         None => args.collect(),
                     };
 
