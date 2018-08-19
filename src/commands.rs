@@ -5,23 +5,40 @@ use std::str::SplitWhitespace;
 use std::fmt::{self, Display, Formatter};
 
 #[derive(Debug, PartialEq)]
-pub struct Command<'name>(pub &'name str);
-
-pub struct Commands<'names> {
-    commands: Vec<Command<'names>>,
+pub struct Command<'name> {
+    pub name: &'name str,
+    pub arity: Option<usize>,
 }
 
-pub struct Builder<'names> {
-    commands: Vec<Command<'names>>,
+impl<'name> Command<'name> {
+    pub fn new(name: &str) -> Command {
+        Command { name, arity: None }
+    }
+
+    pub fn with_arity(name: &str, arity: usize) -> Command {
+        Command { name, arity: Some(arity) }
+    }
+
+    pub fn nullary(name: &str) -> Command {
+        Command::with_arity(name, 0)
+    }
 }
 
-impl<'names> Builder<'names> {
-    pub fn add(mut self, command: Command<'names>) -> Builder<'names> {
+pub struct Commands<'commands> {
+    commands: Vec<Command<'commands>>,
+}
+
+pub struct Builder<'commands> {
+    commands: Vec<Command<'commands>>,
+}
+
+impl<'commands> Builder<'commands> {
+    pub fn add(mut self, command: Command<'commands>) -> Builder<'commands> {
         self.commands.push(command);
         self
     }
 
-    pub fn done(self) -> Commands<'names> {
+    pub fn done(self) -> Commands<'commands> {
         Commands { commands: self.commands }
     }
 }
@@ -38,14 +55,14 @@ impl<'line> Display for InvalidCommand<'line> {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct CommandCall<'line> {
-    pub command: &'line str,
+pub struct CommandCall<'line, 'command> {
+    pub command: &'command Command<'command>,
     pub args: Vec<&'line str>,
 }
 
-impl<'line> Display for CommandCall<'line> {
+impl<'line, 'command> Display for CommandCall<'line, 'command> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "{}{}", COMMAND_PREFIX, self.command)?;
+        write!(f, "{}{}", COMMAND_PREFIX, self.command.name)?;
         for arg in &self.args {
             write!(f, " {}", arg)?;
         }
@@ -53,13 +70,16 @@ impl<'line> Display for CommandCall<'line> {
     }
 }
 
-impl<'names> Commands<'names> {
-    pub fn new() -> Builder<'names> {
+type ParseResult<'line, 'command> = Result<CommandCall<'line, 'command>, InvalidCommand<'line>>; 
+
+impl<'commands> Commands<'commands> {
+
+    pub fn new() -> Builder<'commands> {
         Builder { commands: vec![] }
     }
 
-    pub fn match_str<'line>(&self, command: &'line str) -> Vec<&Command<'names>> {
-        self.commands.iter().filter(|c| c.0.starts_with(command)).collect()
+    pub fn match_str<'line>(&self, command: &'line str) -> Vec<&Command<'commands>> {
+        self.commands.iter().filter(|c| c.name.starts_with(command)).collect()
     }
 
     fn tokenize(line: &str) -> Option<(&str, usize, SplitWhitespace)> {
@@ -77,22 +97,35 @@ impl<'names> Commands<'names> {
         Some((command_prefix, command_start, tokens))
     }
 
-    pub fn parse<'line>(&self, line: &'line str) -> Result<CommandCall<'line>, InvalidCommand<'line>> {
-        let (command, _, args) = Commands::tokenize(line)
-                                .filter(|c1| self.commands.iter().any(|c| c.0 == c1.0))
-                                .ok_or(InvalidCommand(line))?;
-        Ok(CommandCall { command, args: args.collect() })
+    pub fn parse<'line>(&'commands self, line: &'line str) -> ParseResult<'line, 'commands> {
+        match Commands::tokenize(line) {
+            Some((command, _, args)) => {
+                let candidates = self.match_str(command);
+                if candidates.len() == 1 {
+                    let command = candidates[0];
+                    let args = match command.arity {
+                        Some(n) => args.take(n).collect(),
+                        None => args.collect(),
+                    };
+
+                    Ok(CommandCall { command, args })
+                } else {
+                    Err(InvalidCommand(line))
+                }
+            }
+            _ => Err(InvalidCommand(line))
+        }
     }
 }
 
-impl<'names> Completer for Commands<'names> {
+impl<'commands> Completer for Commands<'commands> {
     fn complete(&self, line: &str, _pos: usize) -> rustyline::Result<(usize, Vec<String>)> {
         let (command, position) = match Commands::tokenize(line) {
             Some((command_prefix, start, _)) => (command_prefix, start),
             None => return Ok((0, vec![])),
         };
 
-        Ok((position, self.match_str(command).into_iter().map(|c| c.0.into()).collect()))
+        Ok((position, self.match_str(command).into_iter().map(|c| c.name.into()).collect()))
     }
 }
 
@@ -103,22 +136,22 @@ mod test {
     #[test]
     fn test_matching() {
         let commands = Commands::new()
-                            .add(Command("abc"))
-                            .add(Command("def"))
-                            .add(Command("ddd"))
+                            .add(Command::new("abc"))
+                            .add(Command::new("def"))
+                            .add(Command::new("ddd"))
                             .done();
-        assert_eq!(vec![&Command("abc")], commands.match_str("a"));
-        assert_eq!(vec![&Command("def"), &Command("ddd")], commands.match_str("d"));
+        assert_eq!(vec![&Command::new("abc")], commands.match_str("a"));
+        assert_eq!(vec![&Command::new("def"), &Command::new("ddd")], commands.match_str("d"));
         assert_eq!(Vec::<&Command>::new(), commands.match_str("ad"));
-        assert_eq!(vec![&Command("abc"), &Command("def"), &Command("ddd")], commands.match_str(""));
+        assert_eq!(vec![&Command::new("abc"), &Command::new("def"), &Command::new("ddd")], commands.match_str(""));
     }
 
     #[test]
     fn test_completion() {
         let commands = Commands::new()
-                            .add(Command("foo"))
-                            .add(Command("fizz"))
-                            .add(Command("bar"))
+                            .add(Command::new("foo"))
+                            .add(Command::new("fizz"))
+                            .add(Command::new("bar"))
                             .done();
 
         assert_eq!(
@@ -140,7 +173,7 @@ mod test {
     #[test]
     fn test_parsing() {
         let commands = Commands::new()
-                            .add(Command("foo"))
+                            .add(Command::new("foo"))
                             .done();
 
         {
@@ -151,7 +184,7 @@ mod test {
         {
             let text = " : foo 1 2";
             assert_eq!(
-                Ok(CommandCall { command: "foo", args: vec!["1", "2"] }),
+                Ok(CommandCall { command: &Command::new("foo"), args: vec!["1", "2"] }),
                 commands.parse(text),
             );
         }

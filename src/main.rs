@@ -12,10 +12,10 @@ use commands::{Command, Commands};
 
 fn main() {
     let commands = Commands::new()
-                        .add(Command("quit"))
-                        .add(Command("exit"))
-                        .add(Command("show"))
-                        .add(Command("list"))
+                        .add(Command::nullary("quit"))
+                        .add(Command::nullary("exit"))
+                        .add(Command::new("show"))
+                        .add(Command::nullary("list"))
                         .done();
 
     let mut editor = rustyline::Editor::<&Commands>::with_config(
@@ -45,7 +45,7 @@ fn main() {
         if input.starts_with(commands::COMMAND_PREFIX) {
             match commands.parse(input) {
                 Err(e) => println!("{}", e),
-                Ok(c) => match c.command {
+                Ok(c) => match c.command.name {
                     "quit" | "exit" => exit(),
                     "show" => {
                         for identifier in c.args {
