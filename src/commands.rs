@@ -1,10 +1,11 @@
 extern crate rustyline;
 
-use rustyline::completion::{FilenameCompleter, Completer};
+use rustyline::completion::Completer;
 use std::str::SplitWhitespace;
+use std::cmp::min;
 use std::fmt::{self, Display, Formatter};
 
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Hash, Copy, Clone)]
 pub enum ArgType {
     Symbol,
     File,
@@ -12,15 +13,83 @@ pub enum ArgType {
     Number,
 }
 
-impl ArgType {
-    fn get_completer(self) -> Box<dyn Completer> {
-        if self == ArgType::File {
-            Box::new(FilenameCompleter::default())
-        } else {
-            Box::new(())
+pub mod completion {
+    use std::collections::HashMap;
+    use std::hash::Hash;
+    use rustyline::completion::Completer;
+
+    pub trait CompleterProvider<T: PartialEq> {
+        fn get_completer(&self, token_type: &T) -> &dyn Completer;
+    }
+
+    pub struct Completers<T: Eq + Hash> {
+        completers: HashMap<T, Box<dyn Completer>>,
+    }
+
+    impl<T: Eq + Hash> Completers<T> {
+        pub fn new() -> Self {
+            Completers { completers: HashMap::new() }
+        }
+
+        pub fn add(mut self, token_type: T, completer: Box<dyn Completer>) -> Self {
+           self.completers.insert(token_type, completer);
+           self
+        }
+    }
+
+    impl<T: Eq + Hash> CompleterProvider<T> for Completers<T> {
+        fn get_completer(&self, token_type: &T) -> &dyn Completer {
+            self.completers.get(token_type).map(|b| &**b).unwrap_or(&() as &dyn Completer)
+        }
+    }
+
+    pub mod completers {
+        extern crate rustyline;
+        extern crate char_iter;
+        use rustyline::completion::{extract_word, Completer};
+        use std::collections::BTreeSet;
+
+        lazy_static! {
+            static ref WHITESPACE: BTreeSet<char>  = {
+                let mut ws = BTreeSet::new();
+                ws.extend("\u{0020}\u{0085}\u{00A0}\u{1680}\u{2028}\u{2029}\u{202F}\u{205F}\u{3000}".chars());
+                ws.extend(char_iter::new('\u{0009}', '\u{000D}'));
+                ws.extend(char_iter::new('\u{2000}', '\u{200A}'));
+                ws
+            };
+        }
+
+        pub struct BoolCompleter;
+
+        impl Completer for BoolCompleter {
+            fn complete(&self, line: &str, pos: usize) -> rustyline::Result<(usize, Vec<String>)> {
+                let (mut word_start, word) = extract_word(line, pos, None, &WHITESPACE);
+                let mut matches = vec![];
+                if "true".starts_with(word) {
+                    matches.push("true".into());
+                }
+                if "false".starts_with(word) {
+                    matches.push("false".into());
+                }
+                if matches.len() == 0 {
+                    word_start = 0;
+                }
+                Ok((word_start, matches))
+            }
         }
     }
 }
+
+use self::completion::*;
+
+impl Default for Completers<ArgType> {
+    fn default() -> Self {
+        Completers::new()
+            .add(ArgType::Boolean, Box::new(completion::completers::BoolCompleter))
+            .add(ArgType::File, Box::<rustyline::completion::FilenameCompleter>::default())
+    }
+}
+
 
 #[derive(Debug, PartialEq)]
 pub struct Command<'name> {
@@ -43,22 +112,29 @@ impl<'name> Command<'name> {
     }
 }
 
-pub struct Commands<'commands> {
+pub struct Commands<'commands, T: CompleterProvider<ArgType>> {
     commands: Vec<Command<'commands>>,
+    completers: Option<T>
 }
 
-pub struct Builder<'commands> {
+pub struct Builder<'commands, T: CompleterProvider<ArgType>> {
     commands: Vec<Command<'commands>>,
+    completers: Option<T>
 }
 
-impl<'commands> Builder<'commands> {
-    pub fn add(mut self, command: Command<'commands>) -> Builder<'commands> {
+impl<'commands, T: CompleterProvider<ArgType>> Builder<'commands, T> {
+    pub fn add(mut self, command: Command<'commands>) -> Builder<'commands, T> {
         self.commands.push(command);
         self
     }
 
-    pub fn done(self) -> Commands<'commands> {
-        Commands { commands: self.commands }
+    pub fn with_completers(mut self, provider: T) -> Builder<'commands, T> {
+        self.completers = Some(provider);
+        self
+    }
+
+    pub fn done(self) -> Commands<'commands, T> {
+        Commands { commands: self.commands, completers: self.completers }
     }
 }
 
@@ -91,33 +167,33 @@ impl<'line, 'command> Display for CommandCall<'line, 'command> {
 
 type ParseResult<'line, 'command> = Result<CommandCall<'line, 'command>, InvalidCommand<'line>>; 
 
-impl<'commands> Commands<'commands> {
+fn tokenize(line: &str) -> Option<(&str, usize, SplitWhitespace)> {
+    let start = line.find(COMMAND_PREFIX);
+    if start.is_none() {
+        return None; 
+    }
 
-    pub fn new() -> Builder<'commands> {
-        Builder { commands: vec![] }
+    let start = start.unwrap() + 1;
+    let mut tokens = line[start..].split_whitespace();
+    let command = tokens.next();
+    let command_prefix = command.unwrap_or("");
+    let command_start = command.and_then(|c| line.find(c)).unwrap_or(start);
+
+    Some((command_prefix, command_start, tokens))
+}
+
+impl<'commands, T: CompleterProvider<ArgType>> Commands<'commands, T> {
+
+    pub fn new() -> Builder<'commands, T> {
+        Builder { commands: vec![], completers: None }
     }
 
     pub fn match_str<'line>(&self, command: &'line str) -> Vec<&Command<'commands>> {
         self.commands.iter().filter(|c| c.name.starts_with(command)).collect()
     }
 
-    fn tokenize(line: &str) -> Option<(&str, usize, SplitWhitespace)> {
-        let start = line.find(COMMAND_PREFIX);
-        if start.is_none() {
-            return None; 
-        }
-
-        let start = start.unwrap() + 1;
-        let mut tokens = line[start..].split_whitespace();
-        let command = tokens.next();
-        let command_prefix = command.unwrap_or("");
-        let command_start = command.and_then(|c| line.find(c)).unwrap_or(start);
-
-        Some((command_prefix, command_start, tokens))
-    }
-
     pub fn parse<'line>(&'commands self, line: &'line str) -> ParseResult<'line, 'commands> {
-        match Commands::tokenize(line) {
+        match tokenize(line) {
             Some((command, _, args)) => {
                 let candidates = self.match_str(command);
                 if candidates.len() == 1 {
@@ -144,22 +220,29 @@ impl<'commands> Commands<'commands> {
     }
 }
 
-impl<'commands> Completer for Commands<'commands> {
+impl<'commands, T: CompleterProvider<ArgType>> Completer for Commands<'commands, T> {
     fn complete(&self, line: &str, pos: usize) -> rustyline::Result<(usize, Vec<String>)> {
-        let (command_prefix, position) = match Commands::tokenize(line) {
-            Some((command_prefix, start, _)) => (command_prefix, start),
+        let (full_word, position, _) = match tokenize(line) {
+            Some(tuple) => tuple,
             None => return Ok((0, vec![])),
         };
 
-        let command_candidates = self.match_str(command_prefix);
+        // need this condition because rustyline panics otherwise
+        if pos < position {
+            return Ok((0, vec![]));
+        }
+
+        let clamped_prefix = &line[position..min(pos, position + full_word.len())];
+        let command_candidates = self.match_str(clamped_prefix);
         if command_candidates.len() == 1 {
             let command = command_candidates[0];
-            if command_prefix.len() != command.name.len() {
-                return Ok((position, vec![command.name.into()]))
-            }
 
-            let completer = command.arg.map(ArgType::get_completer).unwrap_or(Box::new(()));
-            return completer.complete(line, pos);
+            if pos <= position + full_word.len() {
+                Ok((position, vec![command.name.into()]))
+            } else {
+                let completer = command.arg.and_then(|at| self.completers.as_ref().map(|c| c.get_completer(&at))).unwrap_or(&());
+                completer.complete(line, pos)
+            }
         } else {
             let command_names = command_candidates.into_iter().map(|c| c.name.into()).collect();
             Ok((position, command_names))
@@ -173,11 +256,11 @@ mod test {
 
     #[test]
     fn test_matching() {
-        let commands = Commands::new()
-                            .add(Command::nullary("abc"))
-                            .add(Command::nullary("def"))
-                            .add(Command::nullary("ddd"))
-                            .done();
+        let commands: Commands<Completers<_>> = Commands::new()
+                                                .add(Command::nullary("abc"))
+                                                .add(Command::nullary("def"))
+                                                .add(Command::nullary("ddd"))
+                                                .done();
         assert_eq!(vec![&Command::nullary("abc")], commands.match_str("a"));
         assert_eq!(vec![&Command::nullary("def"), &Command::nullary("ddd")], commands.match_str("d"));
         assert_eq!(Vec::<&Command>::new(), commands.match_str("ad"));
@@ -186,33 +269,69 @@ mod test {
 
     #[test]
     fn test_completion() {
-        let commands = Commands::new()
-                            .add(Command::nullary("foo"))
-                            .add(Command::nullary("fizz"))
-                            .add(Command::nullary("bar"))
-                            .done();
+        let commands: Commands<Completers<_>> = Commands::new()
+                                                .add(Command::nullary("foo"))
+                                                .add(Command::nullary("fizz"))
+                                                .add(Command::nullary("bar"))
+                                                .done();
 
         assert_eq!(
             (3, vec!["bar".into()]),
-            commands.complete(" : b ", 0).unwrap_or((0, vec!["fail".into()])),
+            commands.complete(" : b ", 0).unwrap(),
         );
 
         assert_eq!(
             (1, vec!["foo".into(), "fizz".into()]),
-            commands.complete(":f", 0).unwrap_or((0, vec!["fail".into()])),
+            commands.complete(":f", 0).unwrap(),
         );
 
         assert_eq!(
             (1, vec!["foo".into(), "fizz".into(), "bar".into()]),
-            commands.complete(":", 0).unwrap_or((0, vec!["fail".into()])),
+            commands.complete(":", 0).unwrap(),
         );
      }
 
     #[test]
-    fn test_parsing() {
+    fn test_argument_completion() {
+        use super::completion::completers::BoolCompleter;
+
+        let completers = Completers::new().add(ArgType::Boolean, Box::new(BoolCompleter));
         let commands = Commands::new()
-                            .add(Command::with_arity("foo", ArgType::Number, 2))
-                            .done();
+                        .with_completers(completers)
+                        .add(Command::with_arity("abc", ArgType::Boolean, 2))
+                        .done();
+
+        assert_eq!(
+            (0, vec![]),
+            commands.complete(":abc k", 6).unwrap(),
+        );
+
+        assert_eq!(
+            (5, vec!["true".into()]),
+            commands.complete(":abc t", 6).unwrap(),
+        );
+
+        assert_eq!(
+            (5, vec!["false".into()]),
+            commands.complete(":abc f", 6).unwrap(),
+        );
+
+        assert_eq!(
+            (10, vec!["true".into(), "false".into()]),
+            commands.complete(":abc true ", 10).unwrap(),
+        );
+
+        assert_eq!(
+            (10, vec!["false".into()]),
+            commands.complete(":abc true fal", 13).unwrap(),
+        );
+    }
+
+    #[test]
+    fn test_parsing() {
+        let commands: Commands<Completers<_>> = Commands::new()
+                                                .add(Command::with_arity("foo", ArgType::Number, 2))
+                                                .done();
 
         {
             let text = "foo 1 2";
