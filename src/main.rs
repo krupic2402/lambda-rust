@@ -22,8 +22,12 @@ const ECHO: &str = "echo";
 const REDUCTIONS: &str = "reductions";
 
 fn main() {
+    let runtime: Arc<Mutex<Environment<HashSymbolTable>>> = Arc::new(Mutex::new(Environment::new()));
+
+    let completers = Completers::default().add(ArgType::Symbol, Box::new(SymbolTableAdapter(Arc::downgrade(&runtime))));
+
     let commands = Commands::new()
-                        .with_completers(Completers::default())
+                        .with_completers(completers)
                         .add(Command::nullary(QUIT))
                         .add(Command::nullary(EXIT))
                         .add(Command::new(SHOW, ArgType::Symbol))
@@ -37,7 +41,6 @@ fn main() {
         Config::builder().completion_type(CompletionType::List).build());
     editor.set_completer(Some(&commands));
 
-    let mut runtime: Environment<HashSymbolTable> = Environment::new();
 
     loop {
         let input = match editor.readline("> ") {
@@ -54,6 +57,8 @@ fn main() {
             }
         };
 
+        let mut runtime_lock = runtime.lock().unwrap();
+
         let input = input.trim();
         if input.is_empty() { continue; }
 
@@ -62,11 +67,11 @@ fn main() {
                 Err(e) => println!("{}", e),
                 Ok(c) => match c.command.name {
                     QUIT | EXIT => exit(),
-                    SHOW => show(c, &runtime),
-                    LIST => list(&runtime),
-                    IMPORT => import(c, &mut runtime),
-                    ECHO => set_echo(c, &mut runtime),
-                    REDUCTIONS => set_max_reductions(c, &mut runtime),
+                    SHOW => show(c, &runtime_lock),
+                    LIST => list(&runtime_lock),
+                    IMPORT => import(c, &mut runtime_lock),
+                    ECHO => set_echo(c, &mut runtime_lock),
+                    REDUCTIONS => set_max_reductions(c, &mut runtime_lock),
                     _ => unreachable!(),
                 }
             }
@@ -74,7 +79,7 @@ fn main() {
             continue;
         }
 
-        let _ = runtime.interpret(input);
+        let _ = runtime_lock.interpret(input);
     }
 }
 
@@ -133,4 +138,27 @@ fn import(command: CommandCall, runtime: &mut Environment) {
             }
         }
     }
-} 
+}
+
+use std::cmp::min;
+use rustyline::completion::{extract_word, Completer};
+use commands::completion::WHITESPACE;
+use std::sync::{Arc, Weak, Mutex};
+
+struct SymbolTableAdapter(Weak<Mutex<Environment<HashSymbolTable>>>);
+
+impl Completer for SymbolTableAdapter {
+    fn complete(&self, line: &str, pos: usize) -> rustyline::Result<(usize, Vec<String>)> {
+        match self.0.upgrade() {
+            None  => ().complete(line, pos),
+            Some(runtime) => {
+                let lock = runtime.lock().unwrap();
+                let symbols = lock.symbol_table().symbols();
+                let (word_start, word) = extract_word(line, pos, None, &WHITESPACE);
+                let prefix = &line[word_start..min(pos, word_start + word.len())];
+                let candidates: Vec<_> = symbols.filter(|s| s.starts_with(prefix)).cloned().collect();
+                Ok((word_start, candidates))
+            }
+        }
+    }
+}

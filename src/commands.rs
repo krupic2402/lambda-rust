@@ -43,27 +43,27 @@ pub mod completion {
         }
     }
 
+    extern crate char_iter;
+    use std::collections::BTreeSet;
+
+    lazy_static! {
+        pub static ref WHITESPACE: BTreeSet<char>  = {
+            let mut ws = BTreeSet::new();
+            ws.extend("\u{0020}\u{0085}\u{00A0}\u{1680}\u{2028}\u{2029}\u{202F}\u{205F}\u{3000}".chars());
+            ws.extend(char_iter::new('\u{0009}', '\u{000D}'));
+            ws.extend(char_iter::new('\u{2000}', '\u{200A}'));
+            ws
+        };
+    }
+
     pub mod completers {
         extern crate rustyline;
-        extern crate char_iter;
         use rustyline::completion::{extract_word, Completer};
-        use std::collections::BTreeSet;
-
-        lazy_static! {
-            static ref WHITESPACE: BTreeSet<char>  = {
-                let mut ws = BTreeSet::new();
-                ws.extend("\u{0020}\u{0085}\u{00A0}\u{1680}\u{2028}\u{2029}\u{202F}\u{205F}\u{3000}".chars());
-                ws.extend(char_iter::new('\u{0009}', '\u{000D}'));
-                ws.extend(char_iter::new('\u{2000}', '\u{200A}'));
-                ws
-            };
-        }
-
         pub struct BoolCompleter;
 
         impl Completer for BoolCompleter {
             fn complete(&self, line: &str, pos: usize) -> rustyline::Result<(usize, Vec<String>)> {
-                let (mut word_start, word) = extract_word(line, pos, None, &WHITESPACE);
+                let (mut word_start, word) = extract_word(line, pos, None, &super::WHITESPACE);
                 let mut matches = vec![];
                 if "true".starts_with(word) {
                     matches.push("true".into());
@@ -165,12 +165,12 @@ impl<'line, 'command> Display for CommandCall<'line, 'command> {
     }
 }
 
-type ParseResult<'line, 'command> = Result<CommandCall<'line, 'command>, InvalidCommand<'line>>; 
+type ParseResult<'line, 'command> = Result<CommandCall<'line, 'command>, InvalidCommand<'line>>;
 
 fn tokenize(line: &str) -> Option<(&str, usize, SplitWhitespace)> {
     let start = line.find(COMMAND_PREFIX);
     if start.is_none() {
-        return None; 
+        return None;
     }
 
     let start = start.unwrap() + 1;
