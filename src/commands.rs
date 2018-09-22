@@ -1,7 +1,6 @@
 extern crate rustyline;
 
-use rustyline::completion::Completer;
-use std::str::SplitWhitespace;
+use rustyline::completion::{extract_word, Completer};
 use std::cmp::min;
 use std::fmt::{self, Display, Formatter};
 
@@ -11,6 +10,7 @@ pub enum ArgType {
     File,
     Boolean,
     Number,
+    Command,
 }
 
 use completion::{self, CompleterProvider, Completers};
@@ -24,24 +24,46 @@ impl Default for Completers<ArgType> {
 }
 
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Command<'name> {
     pub name: &'name str,
-    pub arity: Option<usize>,
+    pub arities: Vec<usize>,
     pub arg: Option<ArgType>,
 }
 
 impl<'name> Command<'name> {
     pub fn new(name: &str, arg: ArgType) -> Command {
-        Command { name, arity: None, arg: Some(arg) }
+        Command { name, arities: vec![], arg: Some(arg) }
     }
 
-    pub fn with_arity(name: &str, arg: ArgType, arity: usize) -> Command {
-        Command { name, arity: Some(arity), arg: Some(arg) }
+    pub fn with_arities(name: &str, arg: ArgType, arities: Vec<usize>) -> Command {
+        Command { name, arities, arg: Some(arg) }
+    }
+
+    pub fn unary(name: &str, arg: ArgType) -> Command {
+        Command { name, arities: vec![1], arg: Some(arg) }
     }
 
     pub fn nullary(name: &str) -> Command {
-        Command { name, arity: Some(0), arg: None }
+        Command { name, arities: vec![0], arg: None }
+    }
+
+    pub fn write_help(&self, f: &mut Formatter) -> fmt::Result {
+        writeln!(f, "{}", self.name)?;
+        writeln!(f, "USAGE:")?;
+        let arg = self.arg.map_or_else(|| "arg".into() , |arg_type| format!("{:?}", arg_type));
+        if !self.arities.is_empty() {
+            for arity in &self.arities {
+                write!(f, "\t:{}", self.name)?;
+                for _ in 0..*arity {
+                    write!(f, " {}", arg)?;
+                }
+                writeln!(f)?;
+            }
+            Ok(())
+        } else {
+            writeln!(f, "\t:{} [{}...]", self.name, arg)
+        }
     }
 }
 
@@ -52,7 +74,8 @@ pub struct Commands<'commands, T: CompleterProvider<ArgType>> {
 
 pub struct Builder<'commands, T: CompleterProvider<ArgType>> {
     commands: Vec<Command<'commands>>,
-    completers: Option<T>
+    completers: Option<T>,
+    help: bool,
 }
 
 impl<'commands, T: CompleterProvider<ArgType>> Builder<'commands, T> {
@@ -66,12 +89,22 @@ impl<'commands, T: CompleterProvider<ArgType>> Builder<'commands, T> {
         self
     }
 
-    pub fn done(self) -> Commands<'commands, T> {
+    pub fn with_help(mut self) -> Builder<'commands, T> {
+        self.help = true;
+        self
+    }
+
+    pub fn done(mut self) -> Commands<'commands, T> {
+        if self.help {
+            let help_command = Command::with_arities(HELP_COMMAND, ArgType::Command, vec![0, 1]);
+            self.commands.push(help_command);
+        }
         Commands { commands: self.commands, completers: self.completers }
     }
 }
 
 pub const COMMAND_PREFIX: &str = ":";
+pub const HELP_COMMAND: &str = "help";
 
 #[derive(Debug, PartialEq)]
 pub struct InvalidCommand<'line>(&'line str);
@@ -100,7 +133,7 @@ impl<'line, 'command> Display for CommandCall<'line, 'command> {
 
 type ParseResult<'line, 'command> = Result<CommandCall<'line, 'command>, InvalidCommand<'line>>;
 
-fn tokenize(line: &str) -> Option<(&str, usize, SplitWhitespace)> {
+fn tokenize(line: &str) -> Option<(&str, usize, impl Iterator<Item=&str>)> {
     let start = line.find(COMMAND_PREFIX)? + 1;
 
     let mut tokens = line[start..].split_whitespace();
@@ -114,11 +147,15 @@ fn tokenize(line: &str) -> Option<(&str, usize, SplitWhitespace)> {
 impl<'commands, T: CompleterProvider<ArgType>> Commands<'commands, T> {
 
     pub fn new() -> Builder<'commands, T> {
-        Builder { commands: vec![], completers: None }
+        Builder { commands: vec![], completers: None, help: false }
     }
 
-    pub fn match_str<'line>(&self, command: &'line str) -> Vec<&Command<'commands>> {
+    fn match_str<'line>(&self, command: &'line str) -> Vec<&Command<'commands>> {
         self.commands.iter().filter(|c| c.name.starts_with(command)).collect()
+    }
+
+    fn match_str_exact<'line>(&self, command: &'line str) -> Vec<&Command<'commands>> {
+        self.commands.iter().filter(|c| c.name == command).collect()
     }
 
     pub fn parse<'line>(&'commands self, line: &'line str) -> ParseResult<'line, 'commands> {
@@ -127,17 +164,10 @@ impl<'commands, T: CompleterProvider<ArgType>> Commands<'commands, T> {
                 let candidates = self.match_str(command);
                 if candidates.len() == 1 {
                     let command = candidates[0];
-                    let args = match command.arity {
-                        Some(n) => {
-                            let args: Vec<_> = args.take(n).collect();
-                            if args.len() == n {
-                                args
-                            } else {
-                                return Err(InvalidCommand(line));
-                            }
-                        }
-                        None => args.collect(),
-                    };
+                    let args: Vec<_> = args.collect();
+                    if command.arities.iter().find(|a| **a == args.len()).is_none() {
+                        return Err(InvalidCommand(line));
+                    }
 
                     Ok(CommandCall { command, args })
                 } else {
@@ -146,6 +176,27 @@ impl<'commands, T: CompleterProvider<ArgType>> Commands<'commands, T> {
             }
             _ => Err(InvalidCommand(line))
         }
+    }
+
+    pub fn write_help(&self, f: &mut fmt::Formatter, command_name: Option<&str>) -> fmt::Result {
+        let commands: Option<Vec<_>> = command_name.map(|name| self.match_str_exact(name));
+        match commands {
+            Some(ref commands) if !commands.is_empty() => {
+                for command in commands {
+                    command.write_help(f)?;
+                }
+            }
+            _ => {
+                if let Some(name) = command_name {
+                    writeln!(f, "No commands with name: {}", name)?;
+                }
+                writeln!(f, "Commands:")?;
+                for command in &self.commands {
+                    writeln!(f, "\t{}", command.name)?;
+                }
+            }
+        }
+        Ok(())
     }
 }
 
@@ -168,6 +219,11 @@ impl<'commands, T: CompleterProvider<ArgType>> Completer for Commands<'commands,
 
             if pos <= position + full_word.len() {
                 Ok((position, vec![command.name.into()]))
+            } else if command.arg == Some(ArgType::Command) {
+                let (position, word_prefix) = extract_word(line, pos, None, &completion::WHITESPACE);
+                let command_names = self.match_str(word_prefix).into_iter().map(|c| c.name.into()).collect();
+
+                Ok((position, command_names))
             } else {
                 let completer = command.arg.and_then(|at| self.completers.as_ref().map(|c| c.get_completer(&at))).unwrap_or(&());
                 completer.complete(line, pos)
@@ -234,7 +290,8 @@ mod test {
         let completers = Completers::new().add(ArgType::Boolean, Box::new(BoolCompleter));
         let commands = Commands::new()
                         .with_completers(completers)
-                        .add(Command::with_arity("abc", ArgType::Boolean, 2))
+                        .add(Command::with_arities("abc", ArgType::Boolean, vec![2]))
+                        .add(Command::unary("help",  ArgType::Command))
                         .done();
 
         assert_eq!(
@@ -261,12 +318,18 @@ mod test {
             (10, vec!["false".into()]),
             commands.complete(":abc true fal", 13).unwrap(),
         );
+
+        assert_eq!(
+            (6, vec!["abc".into(), "help".into()]),
+            commands.complete(":help ", 6).unwrap(),
+        );
     }
 
     #[test]
     fn test_parsing() {
+        let foo = Command::with_arities("foo", ArgType::Number, vec![1, 2]);
         let commands: Commands<Completers<_>> = Commands::new()
-                                                .add(Command::with_arity("foo", ArgType::Number, 2))
+                                                .add(foo.clone())
                                                 .done();
 
         {
@@ -277,9 +340,27 @@ mod test {
         {
             let text = " : foo 1 2";
             assert_eq!(
-                Ok(CommandCall { command: &Command::with_arity("foo", ArgType::Number, 2), args: vec!["1", "2"] }),
+                Ok(CommandCall { command: &foo, args: vec!["1", "2"] }),
                 commands.parse(text),
             );
+        }
+
+        {
+            let text = ":foo 8";
+            assert_eq!(
+                Ok(CommandCall { command: &foo, args: vec!["8"] }),
+                commands.parse(text),
+            );
+        }
+
+        {
+            let text = ":foo ";
+            assert_eq!(Err(InvalidCommand(text)), commands.parse(text));
+        }
+
+        {
+            let text = ":foo 1 2 3";
+            assert_eq!(Err(InvalidCommand(text)), commands.parse(text));
         }
 
         {

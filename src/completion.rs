@@ -82,11 +82,15 @@ pub mod completers {
             match self.0.upgrade() {
                 None  => ().complete(line, pos),
                 Some(runtime) => {
-                    let lock = runtime.lock().unwrap();
-                    let symbols = lock.symbol_table().symbols();
                     let (word_start, word) = extract_word(line, pos, None, &WHITESPACE);
                     let prefix = &line[word_start..min(pos, word_start + word.len())];
-                    let candidates: Vec<_> = symbols.filter(|s| s.starts_with(prefix)).cloned().collect();
+                    let mut candidates: Vec<_> = {
+                        let lock = runtime.lock().unwrap();
+                        let symbols = lock.symbol_table().symbols();
+                        let candidates = symbols.filter(|s| s.starts_with(prefix)).cloned().collect();
+                        candidates
+                    };
+                    candidates.sort_unstable();
                     Ok((word_start, candidates))
                 }
             }

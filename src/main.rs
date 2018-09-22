@@ -32,13 +32,14 @@ fn main() {
 
     let commands = Commands::new()
                         .with_completers(completers)
+                        .with_help()
                         .add(Command::nullary(QUIT))
                         .add(Command::nullary(EXIT))
                         .add(Command::new(SHOW, ArgType::Symbol))
                         .add(Command::nullary(LIST))
-                        .add(Command::with_arity(IMPORT, ArgType::File, 1))
-                        .add(Command::with_arity(ECHO, ArgType::Boolean, 1))
-                        .add(Command::with_arity(REDUCTIONS, ArgType::Number, 1))
+                        .add(Command::unary(IMPORT, ArgType::File))
+                        .add(Command::with_arities(ECHO, ArgType::Boolean, vec![0, 1]))
+                        .add(Command::with_arities(REDUCTIONS, ArgType::Number, vec![0, 1]))
                         .done();
 
     let mut editor = rustyline::Editor::<&Commands<Completers<_>>>::with_config(
@@ -74,8 +75,14 @@ fn main() {
                     SHOW => show(c, &runtime_lock),
                     LIST => list(&runtime_lock),
                     IMPORT => import(c, &mut runtime_lock),
-                    ECHO => set_echo(c, &mut runtime_lock),
-                    REDUCTIONS => set_max_reductions(c, &mut runtime_lock),
+                    ECHO => set_or_print_echo(c, &mut runtime_lock),
+                    REDUCTIONS => set_or_print_max_reductions(c, &mut runtime_lock),
+                    commands::HELP_COMMAND => {
+                        let format = format::Fmt(|mut f| {
+                            commands.write_help(&mut f, c.args.get(0).map(|a| *a))
+                        });
+                        println!("{}", format);
+                    }
                     _ => unreachable!(),
                 }
             }
@@ -94,17 +101,25 @@ fn exit() -> ! {
     process::exit(0);
 }
 
-fn set_echo(command: CommandCall, runtime: &mut Environment) {
-    match command.args[0].parse() {
-        Ok(b) => runtime.echo_enabled = b,
-        Err(e) => println!("Error: {}", e),
+fn set_or_print_echo(command: CommandCall, runtime: &mut Environment) {
+    match command.args.as_slice() {
+        [] => println!("Echo: {}", runtime.echo_enabled),
+        [boolean] => match boolean.parse() {
+            Ok(b) => runtime.echo_enabled = b,
+            Err(e) => println!("Error: {}", e),
+        }
+        _ => unreachable!(),
     }
 }
 
-fn set_max_reductions(command: CommandCall, runtime: &mut Environment) {
-    match command.args[0].parse() {
-        Ok(u) => runtime.max_reductions = u,
-        Err(e) => println!("Error: {}", e),
+fn set_or_print_max_reductions(command: CommandCall, runtime: &mut Environment) {
+    match command.args.as_slice() {
+        [] => println!("Maximum reductions: {}", runtime.max_reductions),
+        [number] => match number.parse() {
+            Ok(u) => runtime.max_reductions = u,
+            Err(e) => println!("Error: {}", e),
+        }
+        _ => unreachable!(),
     }
 }
 
@@ -144,4 +159,13 @@ fn import(command: CommandCall, runtime: &mut Environment) {
     }
 }
 
+mod format {
+    use std::fmt::{Formatter, Result, Display};
+    pub struct Fmt<F>(pub F) where F: Fn(&mut Formatter) -> Result;
 
+    impl<F> Display for Fmt<F> where F: Fn(&mut Formatter) -> Result {
+        fn fmt(&self, f: &mut Formatter) -> Result {
+            (self.0)(f)
+        } 
+    } 
+}
