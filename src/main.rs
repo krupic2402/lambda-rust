@@ -9,9 +9,13 @@ use isatty::*;
 use std::process;
 use std::fs::File;
 use std::io::{BufReader, BufRead};
+use std::sync::{Arc, Mutex};
 
 mod commands;
-use commands::{Command, Commands, CommandCall, ArgType, completion::Completers};
+use commands::{Command, Commands, CommandCall, ArgType};
+
+mod completion;
+use completion::{Completers, completers::SymbolTableAdapter};
 
 const QUIT: &str = "quit";
 const EXIT: &str = "exit";
@@ -24,7 +28,7 @@ const REDUCTIONS: &str = "reductions";
 fn main() {
     let runtime: Arc<Mutex<Environment<HashSymbolTable>>> = Arc::new(Mutex::new(Environment::new()));
 
-    let completers = Completers::default().add(ArgType::Symbol, Box::new(SymbolTableAdapter(Arc::downgrade(&runtime))));
+    let completers = Completers::default().add(ArgType::Symbol, Box::new(SymbolTableAdapter::new(&runtime)));
 
     let commands = Commands::new()
                         .with_completers(completers)
@@ -140,25 +144,4 @@ fn import(command: CommandCall, runtime: &mut Environment) {
     }
 }
 
-use std::cmp::min;
-use rustyline::completion::{extract_word, Completer};
-use commands::completion::WHITESPACE;
-use std::sync::{Arc, Weak, Mutex};
 
-struct SymbolTableAdapter(Weak<Mutex<Environment<HashSymbolTable>>>);
-
-impl Completer for SymbolTableAdapter {
-    fn complete(&self, line: &str, pos: usize) -> rustyline::Result<(usize, Vec<String>)> {
-        match self.0.upgrade() {
-            None  => ().complete(line, pos),
-            Some(runtime) => {
-                let lock = runtime.lock().unwrap();
-                let symbols = lock.symbol_table().symbols();
-                let (word_start, word) = extract_word(line, pos, None, &WHITESPACE);
-                let prefix = &line[word_start..min(pos, word_start + word.len())];
-                let candidates: Vec<_> = symbols.filter(|s| s.starts_with(prefix)).cloned().collect();
-                Ok((word_start, candidates))
-            }
-        }
-    }
-}

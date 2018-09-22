@@ -13,74 +13,7 @@ pub enum ArgType {
     Number,
 }
 
-pub mod completion {
-    use std::collections::HashMap;
-    use std::hash::Hash;
-    use rustyline::completion::Completer;
-
-    pub trait CompleterProvider<T: PartialEq> {
-        fn get_completer(&self, token_type: &T) -> &dyn Completer;
-    }
-
-    pub struct Completers<T: Eq + Hash> {
-        completers: HashMap<T, Box<dyn Completer>>,
-    }
-
-    impl<T: Eq + Hash> Completers<T> {
-        pub fn new() -> Self {
-            Completers { completers: HashMap::new() }
-        }
-
-        pub fn add(mut self, token_type: T, completer: Box<dyn Completer>) -> Self {
-           self.completers.insert(token_type, completer);
-           self
-        }
-    }
-
-    impl<T: Eq + Hash> CompleterProvider<T> for Completers<T> {
-        fn get_completer(&self, token_type: &T) -> &dyn Completer {
-            self.completers.get(token_type).map(|b| &**b).unwrap_or(&() as &dyn Completer)
-        }
-    }
-
-    extern crate char_iter;
-    use std::collections::BTreeSet;
-
-    lazy_static! {
-        pub static ref WHITESPACE: BTreeSet<char>  = {
-            let mut ws = BTreeSet::new();
-            ws.extend("\u{0020}\u{0085}\u{00A0}\u{1680}\u{2028}\u{2029}\u{202F}\u{205F}\u{3000}".chars());
-            ws.extend(char_iter::new('\u{0009}', '\u{000D}'));
-            ws.extend(char_iter::new('\u{2000}', '\u{200A}'));
-            ws
-        };
-    }
-
-    pub mod completers {
-        extern crate rustyline;
-        use rustyline::completion::{extract_word, Completer};
-        pub struct BoolCompleter;
-
-        impl Completer for BoolCompleter {
-            fn complete(&self, line: &str, pos: usize) -> rustyline::Result<(usize, Vec<String>)> {
-                let (mut word_start, word) = extract_word(line, pos, None, &super::WHITESPACE);
-                let mut matches = vec![];
-                if "true".starts_with(word) {
-                    matches.push("true".into());
-                }
-                if "false".starts_with(word) {
-                    matches.push("false".into());
-                }
-                if matches.is_empty() {
-                    word_start = 0;
-                }
-                Ok((word_start, matches))
-            }
-        }
-    }
-}
-
-use self::completion::*;
+use completion::{self, CompleterProvider, Completers};
 
 impl Default for Completers<ArgType> {
     fn default() -> Self {
