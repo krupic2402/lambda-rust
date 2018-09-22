@@ -71,7 +71,7 @@ pub mod completion {
                 if "false".starts_with(word) {
                     matches.push("false".into());
                 }
-                if matches.len() == 0 {
+                if matches.is_empty() {
                     word_start = 0;
                 }
                 Ok((word_start, matches))
@@ -168,12 +168,8 @@ impl<'line, 'command> Display for CommandCall<'line, 'command> {
 type ParseResult<'line, 'command> = Result<CommandCall<'line, 'command>, InvalidCommand<'line>>;
 
 fn tokenize(line: &str) -> Option<(&str, usize, SplitWhitespace)> {
-    let start = line.find(COMMAND_PREFIX);
-    if start.is_none() {
-        return None;
-    }
+    let start = line.find(COMMAND_PREFIX)? + 1;
 
-    let start = start.unwrap() + 1;
     let mut tokens = line[start..].split_whitespace();
     let command = tokens.next();
     let command_prefix = command.unwrap_or("");
@@ -275,19 +271,26 @@ mod test {
                                                 .add(Command::nullary("bar"))
                                                 .done();
 
+        // cursor before command
+        assert_eq!(
+            (0, vec![]),
+            commands.complete(" : b ", 0).unwrap(),
+        );
+
+        // cursor after command
         assert_eq!(
             (3, vec!["bar".into()]),
-            commands.complete(" : b ", 0).unwrap(),
+            commands.complete(" : b ", 4).unwrap(),
         );
 
         assert_eq!(
             (1, vec!["foo".into(), "fizz".into()]),
-            commands.complete(":f", 0).unwrap(),
+            commands.complete(":f", 2).unwrap(),
         );
 
         assert_eq!(
             (1, vec!["foo".into(), "fizz".into(), "bar".into()]),
-            commands.complete(":", 0).unwrap(),
+            commands.complete(":", 1).unwrap(),
         );
      }
 
