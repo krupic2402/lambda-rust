@@ -2,6 +2,7 @@ use ::lambda::{self, Term, Strategy};
 use ::lexer::Token;
 use ::parser::parse;
 use std::collections::{HashMap, HashSet};
+use std::iter;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum BindMode {
@@ -29,6 +30,8 @@ impl Binding {
 pub trait SymbolTable {
     fn insert(&mut self, binding: Binding);
     fn get(&self, identifier: &str) -> Option<&Term>;
+    fn symbols<'a>(&'a self) -> Box<dyn Iterator<Item = &'a String> + 'a>;
+    fn bindings<'a>(&'a self) -> Box<dyn Iterator<Item = (&'a String, &'a Term)> + 'a>;
 }
 
 pub type HashSymbolTable = HashMap<String, Term>;
@@ -41,6 +44,14 @@ impl SymbolTable for HashSymbolTable {
     fn get(&self, identifier: &str) -> Option<&Term> {
         self.get(identifier)
     }
+
+    fn symbols<'a>(&'a self) -> Box<dyn Iterator<Item = &'a String> + 'a> {
+        Box::new(self.keys())
+    }
+
+    fn bindings<'a>(&'a self) -> Box<dyn Iterator<Item = (&'a String, &'a Term)> + 'a> {
+        Box::new(self.iter())
+    }
 }
 
 impl SymbolTable for () {
@@ -51,6 +62,14 @@ impl SymbolTable for () {
     fn get(&self, identifier: &str) -> Option<&Term> {
         None
     }
+
+    fn symbols(&self) -> Box<dyn Iterator<Item = &String>> {
+        Box::new(iter::empty())
+    }
+
+    fn bindings(&self) -> Box<dyn Iterator<Item = (&String, &Term)>> {
+        Box::new(iter::empty())
+    }
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -58,6 +77,7 @@ pub enum EvaluationError {
     TooManyReductions,
     NonTerminating,
     RecursiveBinding,
+    ParseError,
 }
 
 use self::EvaluationError::*;
@@ -66,10 +86,11 @@ pub type EvaluationResult<T> = Result<T, EvaluationError>;
 
 pub struct Environment<T: SymbolTable = HashSymbolTable> {
     symbols: T,
-    max_reductions: usize,
+    pub max_reductions: usize,
+    pub echo_enabled: bool,
 }
 
-#[allow(new_without_default)]
+#[allow(unknown_lints,new_without_default)]
 impl<T: SymbolTable> Environment<T> {
     const MAX_REDUCTIONS_DEFAULT: usize = 5000;
     const ANS: &'static str = "ans";
@@ -78,7 +99,12 @@ impl<T: SymbolTable> Environment<T> {
         Environment {
             symbols: T::default(),
             max_reductions: Self::MAX_REDUCTIONS_DEFAULT,
+            echo_enabled: true,
         }
+    }
+
+    pub fn symbol_table(&self) -> &impl SymbolTable {
+        &self.symbols
     }
 
     fn add_binding(&mut self, mut binding: Binding) -> EvaluationResult<()> {
@@ -104,24 +130,25 @@ impl<T: SymbolTable> Environment<T> {
         term = term.bind_free_from(&self.symbols);
 
         let mut seen_terms = HashSet::new();
+        let mut reduction_count: usize = 0;
         loop {
-            if seen_terms.len() > self.max_reductions {
-                println!("[too many reductions]");
+            if reduction_count > self.max_reductions {
+                println!("[too many reductions: {}]", reduction_count);
                 return Err(TooManyReductions);
             }
 
             let reduct = term.reduce(Strategy::NormalOrder);
-            print!("β: ");
             match reduct {
                 lambda::EvalResult::NormalForm(r) => {
-                    println!("{} [normal]", r);
+                    println!("β: {} [normal; {} reductions]", r, reduction_count);
                     return Ok(r);
                 }
                 lambda::EvalResult::PossiblyReducible(r) => {
                     if !seen_terms.contains(&r) {
-                        println!("{}", r);
+                        if self.echo_enabled { println!("β: {}", r); }
                         term = r;
                         seen_terms.insert(term.clone());
+                        reduction_count += 1;
                     } else {
                         println!("[non-terminating]");
                         return Err(NonTerminating);
@@ -135,7 +162,7 @@ impl<T: SymbolTable> Environment<T> {
         let tokens = Token::parse_all(input.as_ref());
         if let Err(ref e) = tokens {
             println!("{}", e.0);
-            return Ok(());
+            return Err(ParseError);
         }
 
         let tokens = tokens.unwrap();
@@ -149,7 +176,7 @@ impl<T: SymbolTable> Environment<T> {
                 self.add_binding(binding)?;
             }
             Ok(Statement::Expression(term)) => {
-                println!(" : {}", term);
+                if self.echo_enabled { println!(" : {}", term); }
                 let ans = Binding::new(Self::ANS, term, BindMode::CaptureAndReduce);
                 self.add_binding(ans)?;
             }

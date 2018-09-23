@@ -26,7 +26,7 @@ impl<'a> fmt::Display for ParseError<'a> {
             }
             EmptyExpression => write!(f, "Empty subexpression"),
             NotStartOfExpression(ref got_token) => {
-                write!(f, "Invalid token at start of experssion: '{}'", got_token)
+                write!(f, "Invalid token at start of expression: '{}'", got_token)
             }
             EOF(ref patterns) => {
                 write!(f, "Got EOF while expecting any of: {}", patterns.join(", "))
