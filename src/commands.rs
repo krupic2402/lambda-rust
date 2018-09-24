@@ -165,7 +165,8 @@ impl<'commands, T: CompleterProvider<ArgType>> Commands<'commands, T> {
                 if candidates.len() == 1 {
                     let command = candidates[0];
                     let args: Vec<_> = args.collect();
-                    if command.arities.iter().find(|a| **a == args.len()).is_none() {
+                    if !command.arities.is_empty() &&
+                        command.arities.iter().find(|a| **a == args.len()).is_none() {
                         return Err(InvalidCommand(line));
                     }
 
