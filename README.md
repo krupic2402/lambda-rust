@@ -7,6 +7,8 @@ A lambda calculus interpreter I wrote as a toy project in Rust. Most of the func
 It supports normal order evaluation of lambda terms and definition of bindings for ease of usage.
 See [the prelude](prelude.lmd) for examples.
 
+Compile with toolchain version 1.35.0 or prior.
+
 # TODO
 
 - [x] implement better control of when reductions happen
